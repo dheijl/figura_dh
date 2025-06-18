@@ -1,7 +1,5 @@
 use thiserror::Error;
 
-use crate::var::VariableKind;
-
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum TemplateError {
     #[error("There's a missing '{0}' in your template.")]
@@ -16,6 +14,9 @@ pub enum TemplateError {
     #[error("There's a missing '{0}' in your template.")]
     MissingDelimiter(char),
 
-    #[error("You are trying to use a repeat operation with a non-uint count: '{0}' is a {1}")]
-    NonUIntForCountVariable(String, VariableKind),
+    #[error("Trying to use a value that doesn't exist: '{0}' doesn't point to any value")]
+    NoValueFound(String),
+
+    #[error("You are trying to use a repeat operation with a non-uint count: '{0}'")]
+    NonUIntForCountVariable(String),
 }

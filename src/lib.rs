@@ -1,6 +1,7 @@
 mod delimiters;
 mod error;
-mod var;
+
+use std::collections::HashMap;
 
 pub use delimiters::*;
 pub use error::*;
@@ -33,7 +34,6 @@ impl Alignment {
 pub enum Value {
     String(String),
     Int(i64),
-    UInt(u64),
     Bool(bool),
 }
 
@@ -45,8 +45,6 @@ impl Value {
             _ => {
                 if let Ok(i) = s.parse::<i64>() {
                     Value::Int(i)
-                } else if let Ok(u) = s.parse::<u64>() {
-                    Value::UInt(u)
                 } else {
                     Value::String(s.to_string())
                 }
@@ -54,6 +52,18 @@ impl Value {
         }
     }
 }
+
+impl ToString for Value {
+    fn to_string(&self) -> String {
+        match self {
+            Value::String(s) => s.to_string(),
+            Value::Int(i) => i.to_string(),
+            Value::Bool(b) => b.to_string(),
+        }
+    }
+}
+
+type Context = HashMap<String, Value>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Op {
@@ -250,6 +260,48 @@ impl<D: Delimiter> Template<D> {
         }
 
         Op::Replace(content.to_owned())
+    }
+
+    pub fn format(&self, ctx: &Context) -> Result<String, TemplateError> {
+        let mut result = String::new();
+
+        for p in self.parts() {
+            match p {
+                Part::Literal(s) => result.push_str(s),
+                Part::Operation(Op::Replace(name)) => match ctx.get(name) {
+                    Some(v) => result.push_str(&v.to_string()),
+                    None => return Err(TemplateError::NoValueFound(name.to_string())),
+                },
+                Part::Operation(Op::Repeat { pattern, count_var }) => {
+                    let pattern = match ctx.get(pattern) {
+                        Some(value) => value.to_string(),
+                        None => pattern.to_string(),
+                    };
+
+                    let count = if let Some(count) = ctx.get(count_var) {
+                        count
+                    } else {
+                        &Value::from_str(&count_var)
+                    };
+
+                    match count {
+                        Value::Int(i) if *i >= 0 => {
+                            result.push_str(&pattern.repeat((*i).try_into().unwrap()))
+                        }
+                        _ => {
+                            return Err(TemplateError::NonUIntForCountVariable(
+                                count_var.to_string(),
+                            ));
+                        }
+                    }
+                }
+
+                // TODO: Conditional operations
+                _ => {}
+            }
+        }
+
+        Ok(result)
     }
 
     pub fn parts(&self) -> &Vec<Part> {
