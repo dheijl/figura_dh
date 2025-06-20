@@ -19,4 +19,7 @@ pub enum TemplateError {
 
     #[error("You are trying to use a repeat operation with a non-uint count: '{0}'")]
     NonUIntForCountVariable(String),
+
+    #[error("Could not parse a directive for the literal '{0}'")]
+    DirectiveParsing(String),
 }
