@@ -1,30 +1,118 @@
 use crate::{Context, TemplateError, Token, Value};
 use std::fmt::Debug;
 
+/// A trait representing an action to be executed when a directive is found
+/// within a template.
+///
+/// Directives are units of logic that consume a section of a template and
+/// produce a string based on the provided [`Context`]. They may replace content,
+/// repeat content, evaluate conditions, etc.
+///
+/// # Example
+///
+/// ```no_run
+/// struct MyDirective;
+///
+/// impl Directive for MyDirective {
+///     fn execute(&self, ctx: &Context) -> Result<String, TemplateError> {
+///         Ok("Hello from directive!".to_string())
+///     }
+/// }
+/// ```
+///
+/// # Errors
+/// Implementations of this trait may return a [`TemplateError`] if evaluation fails,
+/// such as when a required variable is missing from the context.
 pub trait Directive: Debug {
+    /// Executes the directive using the provided context.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - The template rendering context providing variable values.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the rendered string, or a `TemplateError` if evaluation fails.
     fn execute(&self, ctx: &Context) -> Result<String, TemplateError>;
 }
 
+/// A trait for parsing a list of [`Token`]s into a [`Directive`] that can later be executed.
+///
+/// Parsers determine how specific token patterns should be interpreted and
+/// mapped to executable directives.
+///
+/// # Example
+///
+/// ```no_run
+/// struct MyParser;
+///
+/// impl Parser for MyParser {
+///     fn parse(tokens: &[Token]) -> Option<Box<dyn Directive>> {
+///         if tokens == [Token::Literal("hello".into())] {
+///             Some(Box::new(NoDirective("hello".into())))
+///         } else {
+///             None
+///         }
+///     }
+/// }
+/// ```
+///
+/// # Note
+/// A parser may choose to return `None` if it cannot recognize the token sequence,
+/// unless it’s a default parser (e.g., [`DefaultParser`]) that always provides a fallback.
 pub trait Parser {
-    fn parse(tokens: &[Token]) -> Option<Box<dyn Directive>>;
+    /// Attempts to parse the provided tokens into a `Directive`.
+    ///
+    /// # Arguments
+    ///
+    /// * `tokens` - A slice of `Token`s representing a segment of the template.
+    /// * `content` - The original string that has been tokenized
+    ///
+    /// # Returns
+    ///
+    /// An `Option` containing a boxed `Directive` if parsing was successful,
+    /// or `None` if the tokens do not match any known directive pattern.
+    fn parse(tokens: &[Token], content: &str) -> Option<Box<dyn Directive>>;
 }
 
-/// A directive that does nothing,
-/// just returns the original content.
+/// A fallback directive that performs no substitution or transformation,
+/// simply returning the original content.
 ///
-/// Useful where you want the parser to have
-/// a fallback directive so it doesn't return `None`.
+/// This directive is useful when no specific transformation is required,
+/// or as a default when a parser cannot recognize a pattern.
 ///
-/// In fact, it is the implementation for the default parser.
+/// # Example
+///
+/// ```no_run
+/// let directive = NoDirective("unchanged".into());
+/// assert_eq!(directive.execute(&Context::new()).unwrap(), "unchanged");
+/// ```
 #[derive(Debug)]
 pub struct NoDirective(String);
 
 impl Directive for NoDirective {
+    /// Returns the original content unchanged.
     fn execute(&self, _: &Context) -> Result<String, TemplateError> {
         Ok(self.0.to_string())
     }
 }
 
+/// A directive that replaces a string literal with a value from the context.
+///
+/// Typically used when a directive like `{name}` appears in a template,
+/// and "name" is a key in the context.
+///
+/// # Errors
+/// Returns [`TemplateError::NoValueFound`] if the key is not present in the context.
+///
+/// # Example
+///
+/// ```no_run
+/// let mut ctx = Context::new();
+/// ctx.insert("name", Value::String("Alice".into()));
+/// let directive = ReplaceDirective("name".into());
+/// assert_eq!(directive.execute(&ctx).unwrap(), "Alice");
+/// ```
 #[derive(Debug)]
 pub struct ReplaceDirective(String);
 
@@ -38,6 +126,30 @@ impl Directive for ReplaceDirective {
     }
 }
 
+/// A directive that repeats a pattern a specified number of times.
+///
+/// Supports both literals and context-based values for the pattern and count.
+/// For example, `{hello:3}` will yield `"hellohellohello"`.
+///
+/// # Behavior
+/// - If `pattern` or `count` are not found in context, they are treated as literals.
+/// - `count` must be a positive integer, either directly or from context.
+///
+/// # Errors
+/// Returns [`TemplateError::ExecutionError`] if:
+/// - `count` is non-numeric or negative
+/// - A context variable exists but is of a non-integer type
+///
+/// # Example
+///
+/// ```no_run
+/// let mut ctx = Context::new();
+/// ctx.insert("word", Value::String("hi".into()));
+/// ctx.insert("times", Value::Int(3));
+///
+/// let directive = RepeatDirective("word".into(), "times".into());
+/// assert_eq!(directive.execute(&ctx).unwrap(), "hihihi");
+/// ```
 #[derive(Debug)]
 pub struct RepeatDirective(String, String);
 
@@ -56,22 +168,44 @@ impl Directive for RepeatDirective {
         let count = match ctx.get(self.1.as_str()) {
             Some(c) => match c {
                 Value::Int(i) if *i > 0 => *i as usize,
-                _ => return Err(TemplateError::NonUIntForCountVariable(self.1.clone())),
+                _ => {
+                    return Err(TemplateError::ExecutionError(
+                        "Could not parse a numeric value for the repeat count".to_string(),
+                    ));
+                }
             },
-            None => self
-                .1
-                .parse::<usize>()
-                .map_err(|_| TemplateError::NonUIntForCountVariable(self.1.clone()))?,
+            None => self.1.parse::<usize>().map_err(|_| {
+                TemplateError::ExecutionError(
+                    "Could not parse a numeric value for the repeat count".to_string(),
+                )
+            })?,
         };
 
         Ok(pattern.repeat(count))
     }
 }
 
+/// The default parser used to convert template tokens into executable directives.
+///
+/// It supports three kinds of directives:
+/// - Replacement: `{variable}` → [`ReplaceDirective`]
+/// - Repetition: `{pattern:count}` → [`RepeatDirective`]
+/// - Fallback: any other input → [`NoDirective`]
+///
+/// # Example
+///
+/// ```no_run
+/// let tokens = vec![Token::Literal("name".into())];
+/// let directive = DefaultParser::parse(&tokens).unwrap();
+/// ```
+///
+/// # Note
+/// This parser **never returns `None`**, ensuring that all token sequences are turned into
+/// a directive, even if it’s just [`NoDirective`].
 pub struct DefaultParser;
 
 impl Parser for DefaultParser {
-    fn parse(tokens: &[Token]) -> Option<Box<dyn Directive>> {
+    fn parse(tokens: &[Token], content: &str) -> Option<Box<dyn Directive>> {
         match tokens {
             // {variable}
             [Token::Literal(s)] => Some(Box::new(ReplaceDirective(s.clone()))),
@@ -83,9 +217,7 @@ impl Parser for DefaultParser {
             ))),
 
             // Just return the original string
-            t => Some(Box::new(NoDirective(
-                t.iter().map(|token| token.to_string()).collect::<String>(),
-            ))),
+            _ => Some(Box::new(NoDirective(content.to_owned()))),
         }
     }
 }
