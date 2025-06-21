@@ -1,6 +1,5 @@
-use std::collections::HashMap;
-
 use figura::{DefaultParser, Template, Value};
+use std::collections::HashMap;
 
 fn main() {
     let context = HashMap::from([
