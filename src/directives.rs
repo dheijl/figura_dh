@@ -10,6 +10,22 @@ pub trait Parser {
     fn parse(tokens: &[Token]) -> Option<Box<dyn Directive>>;
 }
 
+/// A directive that does nothing,
+/// just returns the original content.
+///
+/// Useful where you want the parser to have
+/// a fallback directive so it doesn't return `None`.
+///
+/// In fact, it is the implementation for the default parser.
+#[derive(Debug)]
+pub struct NoDirective(String);
+
+impl Directive for NoDirective {
+    fn execute(&self, _: &Context) -> Result<String, TemplateError> {
+        Ok(self.0.to_string())
+    }
+}
+
 #[derive(Debug)]
 pub struct ReplaceDirective(String);
 
@@ -66,7 +82,11 @@ impl Parser for DefaultParser {
                 fist_part.to_string(),
                 second_part.to_string(),
             ))),
-            _ => None,
+
+            // Just return the original string
+            t => Some(Box::new(NoDirective(
+                t.iter().map(|token| token.to_string()).collect::<String>(),
+            ))),
         }
     }
 }

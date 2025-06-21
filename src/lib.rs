@@ -1,11 +1,9 @@
-mod delimiters;
 mod directives;
 mod error;
 
-pub use delimiters::*;
+pub use directives::*;
 pub use error::*;
 
-use crate::directives::{Directive, Parser};
 use std::{collections::HashMap, fmt::Display};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -182,6 +180,7 @@ impl<const O: char, const C: char> Template<O, C> {
 
         Ok(result)
     }
+
     fn validate_delimiters(input: &str) -> Result<(), TemplateError> {
         let mut chars = input.chars().peekable();
 
@@ -255,7 +254,7 @@ impl<const O: char, const C: char> Template<O, C> {
                     tokens.push(Token::Delimiter(c))
                 }
 
-                c if ch.is_alphabetic() || c == '_' => {
+                c if ch.is_alphabetic() || c == '_' || c.is_whitespace() => {
                     // Push a number if the number buffer is not empty
                     if !number.is_empty() {
                         tokens.push(Token::Int(number.parse::<i64>().unwrap()));
