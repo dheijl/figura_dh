@@ -1,7 +1,21 @@
 [package]
 name = "figura"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2024"
+authors = ["Saverio Scagnoli <svscagn@gmail.com>"]
+description = "A flexible string template formatting crate"
+documentation = "https://docs.rs/figura"
+repository = "https://github.com/saverioscagnoli/pls/figura"
+homepage = "https://github.com/saverioscagnoli/pls/figura"
+license = "MIT"
+readme = "README.md"
+keywords = ["string", "format", "template"]
+
+exclude = [
+    ".vscode",
+    ".gitignore",
+    "docs",
+]
 
 [dependencies]
 thiserror = "2.0.12"
