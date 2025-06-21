@@ -1,12 +1,12 @@
 [package]
 name = "figura"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2024"
 authors = ["Saverio Scagnoli <svscagn@gmail.com>"]
 description = "A flexible string template formatting crate"
 documentation = "https://docs.rs/figura"
-repository = "https://github.com/saverioscagnoli/pls/figura"
-homepage = "https://github.com/saverioscagnoli/pls/figura"
+repository = "https://github.com/saverioscagnoli/pls/tree/figura/figura"
+homepage = "https://github.com/saverioscagnoli/pls/tree/figura/figura"
 license = "MIT"
 readme = "README.md"
 keywords = ["string", "format", "template"]
