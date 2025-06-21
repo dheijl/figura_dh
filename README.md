@@ -1,4 +1,4 @@
-# Figura - template
+# Figura - template parsing
 
 A flexible and extensible template formatting engine for Rust that supports custom delimiters, alignment options, and pluggable directive parsers.
 
@@ -17,7 +17,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-figura = "0.0.1"
+figura = "0.0.3"
 ```
 
 ### Basic Usage
