@@ -1,6 +1,5 @@
-use std::fmt::Debug;
-
 use crate::{Context, TemplateError, Token, Value};
+use std::fmt::Debug;
 
 pub trait Directive: Debug {
     fn execute(&self, ctx: &Context) -> Result<String, TemplateError>;
