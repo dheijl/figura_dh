@@ -169,7 +169,7 @@ impl Directive for RepeatDirective {
         // If not return an error
         let count = match ctx.get(self.1.as_str()) {
             Some(c) => match c {
-                Value::Int(i) if *i > 0 => *i as usize,
+                Value::Int(i) if *i >= 0 => *i as usize,
                 _ => {
                     return Err(TemplateError::ExecutionError(
                         "Could not parse a numeric value for the repeat count".to_string(),
