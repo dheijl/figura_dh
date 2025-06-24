@@ -1,4 +1,4 @@
-use figura::{DefaultParser, Template, Value};
+use figura::{Template, Value};
 use std::collections::HashMap;
 
 fn main() {
@@ -8,13 +8,13 @@ fn main() {
         ("depth", Value::Int(2)),
     ]);
 
-    if let Ok(t) = Template::<'{', '}'>::parse::<DefaultParser>("Hello! My name is {name}") {
+    if let Ok(t) = Template::<'{', '}'>::parse("Hello! My name is {name}") {
         println!("{}", t.format(&context).unwrap());
     }
 
-    if let Ok(t) = Template::<'[', ']'>::parse::<DefaultParser>(
-        "[ :depth] This will have [depth] spaces in the front!",
-    ) {
+    if let Ok(t) =
+        Template::<'[', ']'>::parse("[ :depth] This will have [depth] spaces in the front!")
+    {
         println!("{}", t.format(&context).unwrap());
     }
 }

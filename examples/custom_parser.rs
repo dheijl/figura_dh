@@ -20,7 +20,7 @@ impl figura::Parser for DirectiveParser {
 }
 
 fn main() {
-    let template = Template::<'<', '>'>::parse::<DirectiveParser>("This will be <reversed>");
+    let template = Template::<'<', '>'>::with_parser::<DirectiveParser>("This will be <reversed>");
 
     if let Ok(t) = template {
         // The output will be "This will be desrever"

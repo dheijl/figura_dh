@@ -6,15 +6,21 @@ mod error;
 pub use directives::*;
 pub use error::*;
 
+use smacro::s;
 use std::{collections::HashMap, fmt::Display};
 
 /// A simple value type used in templating context.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum Value {
     /// String value.
     String(String),
+
     /// Integer value.
     Int(i64),
+
+    /// Floating-point value.
+    Float(f64),
+
     /// Boolean value.
     Bool(bool),
 }
@@ -22,9 +28,10 @@ pub enum Value {
 impl ToString for Value {
     fn to_string(&self) -> String {
         match self {
-            Value::String(s) => s.clone(),
-            Value::Int(i) => i.to_string(),
-            Value::Bool(b) => b.to_string(),
+            Value::String(s) => s!(s),
+            Value::Int(i) => s!(i),
+            Value::Float(f) => s!(f),
+            Value::Bool(b) => s!(b),
         }
     }
 }
@@ -42,16 +49,18 @@ impl ToString for Value {
 pub type Context = HashMap<&'static str, Value>;
 
 /// A token used in directive parsing.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum Token {
-    /// Represents a delimiter character (e.g., `{` or `}`).
-    Delimiter(char),
-    /// A literal string.
-    Literal(String),
+    /// A string literal, which can contain alphanumeric characters, underscores, and whitespace.
+    /// It can be treated as an identifier or a slice of text.
+    Slice(String),
     /// A symbolic character (e.g., `:`, `+`, etc.).
+    /// _ and whitespace are excluded
     Symbol(char),
     /// An integer literal.
     Int(i64),
+    // Float
+    Float(f64),
     /// Any unrecognized character.
     Uknown(char),
 }
@@ -59,10 +68,10 @@ pub enum Token {
 impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Token::Delimiter(c) => write!(f, "{c}"),
-            Token::Literal(l) => write!(f, "{l}"),
+            Token::Slice(s) => write!(f, "{s}"),
             Token::Symbol(s) => write!(f, "{s}"),
             Token::Int(i) => write!(f, "{i}"),
+            Token::Float(n) => write!(f, "{n}"),
             Token::Uknown(c) => write!(f, "{c}"),
         }
     }
@@ -128,10 +137,21 @@ pub struct Template<const O: char = '{', const C: char = '}'> {
 }
 
 impl<const O: char, const C: char> Template<O, C> {
+    /// Parses a template string into a [`Template`] instance using the default parser.
+    ///
+    /// To use your custom parser, use [`Template::with_parser`].
+    pub fn parse<T: AsRef<str>>(t: T) -> Result<Self, TemplateError> {
+        Self::with_parser::<DefaultParser>(t.as_ref())
+    }
+
     /// Parses a template string into a [`Template`] instance.
     ///
-    /// Returns an error if the template has invalid syntax or cannot be parsed.
-    pub fn parse<P: Parser>(t: &str) -> Result<Self, TemplateError> {
+    /// Uses the provided parser `P` to handle directives.
+    /// The default parse function internally uses this function like this:
+    /// ```no_run
+    /// Self::with_parser::<DefaultParser>(t)
+    /// ```
+    pub fn with_parser<P: Parser>(t: &str) -> Result<Self, TemplateError> {
         let mut chars = t.chars().peekable();
 
         Self::validate_delimiters(&t)?;
@@ -280,6 +300,30 @@ impl<const O: char, const C: char> Template<O, C> {
         Ok(())
     }
 
+    fn flush_slice(slice: &mut String, tokens: &mut Vec<Token>) {
+        if slice.is_empty() {
+            return;
+        }
+
+        tokens.push(Token::Slice(s!(slice)));
+        slice.clear();
+    }
+
+    fn flush_number(number: &mut String, tokens: &mut Vec<Token>, is_float: &mut bool) {
+        if number.is_empty() {
+            return;
+        }
+
+        if *is_float {
+            tokens.push(Token::Float(number.parse::<f64>().unwrap()));
+            *is_float = false;
+        } else {
+            tokens.push(Token::Int(number.parse::<i64>().unwrap()));
+        }
+
+        number.clear();
+    }
+
     /// Function to convert a section between delimiters
     /// into a vector of token, which will be passed into
     /// the parse trait function so that the user can customize the logic
@@ -287,76 +331,88 @@ impl<const O: char, const C: char> Template<O, C> {
         let mut tokens = Vec::new();
         let mut chars = input.chars().peekable();
         // Keeps track of the current string literal
-        let mut literal = String::new();
+        let mut slice = String::new();
         // Keeps track of the current number (for multi-digits)
+        let mut tracking_float = false;
         let mut number = String::new();
 
         while let Some(ch) = chars.next() {
             match ch {
-                c if c == O || c == C => {
-                    // Push a number if the number buffer is not empty
-                    if !number.is_empty() {
-                        tokens.push(Token::Int(number.parse::<i64>().unwrap()));
-                        number.clear();
-                    }
+                // Slice token
+                c if c.is_alphabetic() || c == '_' || c.is_whitespace() => {
+                    Self::flush_number(&mut number, &mut tokens, &mut tracking_float);
 
-                    // Push a literal if the literal buffer is not empty
-                    if !literal.is_empty() {
-                        tokens.push(Token::Literal(literal.clone()));
-                        literal.clear();
-                    }
-
-                    tokens.push(Token::Delimiter(c))
+                    slice.push(c)
                 }
 
-                c if ch.is_alphabetic() || c == '_' || c.is_whitespace() => {
-                    // Push a number if the number buffer is not empty
-                    if !number.is_empty() {
-                        tokens.push(Token::Int(number.parse::<i64>().unwrap()));
-                        number.clear();
-                    }
+                // Number token
+                c if c.is_ascii_digit() => {
+                    Self::flush_slice(&mut slice, &mut tokens);
 
-                    literal.push(c);
+                    number.push(c);
                 }
 
-                c if ch.is_ascii_digit() => {
-                    // Push a literal if the literal buffer is not empty
-                    if !literal.is_empty() {
-                        tokens.push(Token::Literal(literal.clone()));
-                        literal.clear();
-                    }
+                // '.', check for potential float
+                c if c == '.' => {
+                    Self::flush_slice(&mut slice, &mut tokens);
 
-                    number.push(c)
+                    if !number.is_empty() {
+                        number.push(c);
+                        tracking_float = true;
+                    } else {
+                        // Peek, if the next character is a digit, it is a float (i.e., .3)
+                        if let Some(next_ch) = chars.peek() {
+                            if next_ch.is_ascii_digit() {
+                                number.push(c);
+                                tracking_float = true;
+                            } else {
+                                Self::flush_number(&mut number, &mut tokens, &mut tracking_float);
+                                tokens.push(Token::Symbol(c));
+                            }
+                        } else {
+                            // If no next character, treat it as a symbol
+                            Self::flush_number(&mut number, &mut tokens, &mut tracking_float);
+                            tokens.push(Token::Symbol(c));
+                        }
+                    }
                 }
 
-                c if !ch.is_alphanumeric() && !ch.is_whitespace() => {
-                    // Push a number if the number buffer is not empty
-                    if !number.is_empty() {
-                        tokens.push(Token::Int(number.parse::<i64>().unwrap()));
-                        number.clear();
-                    }
+                // '-', check for potential negative number
+                c if c == '-' => {
+                    Self::flush_slice(&mut slice, &mut tokens);
+                    Self::flush_number(&mut number, &mut tokens, &mut tracking_float);
 
-                    // Push a literal if the literal buffer is not empty
-                    if !literal.is_empty() {
-                        tokens.push(Token::Literal(literal.clone()));
-                        literal.clear();
+                    // If the next character is a digit, treat it as a negative number
+                    if let Some(next_ch) = chars.peek() {
+                        if next_ch.is_ascii_digit() {
+                            number.push(c);
+                        } else {
+                            tokens.push(Token::Symbol(c));
+                        }
+                    } else {
+                        tokens.push(Token::Symbol(c));
                     }
+                }
+
+                // Symbol token
+                c if !c.is_alphanumeric() && !ch.is_whitespace() => {
+                    Self::flush_slice(&mut slice, &mut tokens);
+                    Self::flush_number(&mut number, &mut tokens, &mut tracking_float);
 
                     tokens.push(Token::Symbol(c));
                 }
 
-                _ => {}
+                c => {
+                    Self::flush_slice(&mut slice, &mut tokens);
+                    Self::flush_number(&mut number, &mut tokens, &mut tracking_float);
+
+                    tokens.push(Token::Uknown(c))
+                }
             }
         }
 
-        // Check for hanging buffers
-        if !literal.is_empty() {
-            tokens.push(Token::Literal(literal.clone()));
-        }
-
-        if !number.is_empty() {
-            tokens.push(Token::Int(number.parse::<i64>().unwrap()));
-        }
+        Self::flush_slice(&mut slice, &mut tokens);
+        Self::flush_number(&mut number, &mut tokens, &mut tracking_float);
 
         tokens
     }
@@ -369,253 +425,135 @@ impl<const O: char, const C: char> Template<O, C> {
 
 #[cfg(test)]
 mod tokenization {
+    use smacro::s;
+
     use super::*;
 
     #[test]
-    fn test_tokenize_empty_string() {
-        let tokens = Template::<'{', '}'>::tokenize("");
-        assert!(tokens.is_empty());
-    }
+    fn basic() {
+        let content = "hello:world";
+        let tokens = Template::<'{', '}'>::tokenize(content);
 
-    #[test]
-    fn test_tokenize_simple_literal() {
-        let tokens = Template::<'{', '}'>::tokenize("hello");
-        assert_eq!(tokens, vec![Token::Literal("hello".to_string())]);
-    }
-
-    #[test]
-    fn test_tokenize_simple_number() {
-        let tokens = Template::<'{', '}'>::tokenize("123");
-        assert_eq!(tokens, vec![Token::Int(123)]);
-    }
-
-    #[test]
-    fn test_tokenize_single_symbol() {
-        let tokens = Template::<'{', '}'>::tokenize(":");
-        assert_eq!(tokens, vec![Token::Symbol(':')]);
-    }
-
-    #[test]
-    fn test_tokenize_delimiters() {
-        let tokens = Template::<'{', '}'>::tokenize("{}");
-        assert_eq!(tokens, vec![Token::Delimiter('{'), Token::Delimiter('}')]);
-    }
-
-    #[test]
-    fn test_tokenize_mixed_literal_and_number() {
-        let tokens = Template::<'{', '}'>::tokenize("hello123");
-        assert_eq!(
-            tokens,
-            vec![Token::Literal("hello".to_string()), Token::Int(123)]
-        );
-    }
-
-    #[test]
-    fn test_tokenize_number_and_literal() {
-        let tokens = Template::<'{', '}'>::tokenize("123hello");
-        assert_eq!(
-            tokens,
-            vec![Token::Int(123), Token::Literal("hello".to_string())]
-        );
-    }
-
-    #[test]
-    fn test_tokenize_literal_with_underscore() {
-        let tokens = Template::<'{', '}'>::tokenize("hello_world");
-        assert_eq!(tokens, vec![Token::Literal("hello_world".to_string())]);
-    }
-
-    #[test]
-    fn test_tokenize_literal_with_whitespace() {
-        let tokens = Template::<'{', '}'>::tokenize("hello world");
-        assert_eq!(tokens, vec![Token::Literal("hello world".to_string())]);
-    }
-
-    #[test]
-    fn test_tokenize_multiple_symbols() {
-        let tokens = Template::<'{', '}'>::tokenize(":+=-");
         assert_eq!(
             tokens,
             vec![
+                Token::Slice(s!("hello")),
                 Token::Symbol(':'),
-                Token::Symbol('+'),
-                Token::Symbol('='),
+                Token::Slice(s!("world"))
+            ]
+        )
+    }
+
+    #[test]
+    fn with_numbers() {
+        let content = "hello:234__world";
+        let tokens = Template::<'{', '}'>::tokenize(content);
+
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Slice(s!("hello")),
+                Token::Symbol(':'),
+                Token::Int(234),
+                Token::Slice(s!("__world"))
+            ]
+        )
+    }
+
+    #[test]
+    fn with_floats() {
+        let content = "-3.40pi:3.14159__e:2.71828";
+        let tokens = Template::<'{', '}'>::tokenize(content);
+
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Float(-3.4),
+                Token::Slice(s!("pi")),
+                Token::Symbol(':'),
+                Token::Float(3.14159),
+                Token::Slice(s!("__e")),
+                Token::Symbol(':'),
+                Token::Float(2.71828)
+            ]
+        );
+
+        let content = "density:.3--Hello!";
+        let tokens = Template::<'{', '}'>::tokenize(content);
+
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Slice(s!("density")),
+                Token::Symbol(':'),
+                Token::Float(0.3),
+                Token::Symbol('-'),
+                Token::Symbol('-'),
+                Token::Slice(s!("Hello")),
+                Token::Symbol('!')
+            ]
+        );
+    }
+
+    #[test]
+    fn with_negatives() {
+        let content = "negative:-42 pos-2134.567itive:42, symbol:-";
+        let tokens = Template::<'{', '}'>::tokenize(content);
+
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Slice(s!("negative")),
+                Token::Symbol(':'),
+                Token::Int(-42),
+                Token::Slice(s!(" pos")),
+                Token::Float(-2134.567),
+                Token::Slice(s!("itive")),
+                Token::Symbol(':'),
+                Token::Int(42),
+                Token::Symbol(','),
+                Token::Slice(s!(" symbol")),
+                Token::Symbol(':'),
                 Token::Symbol('-')
             ]
         );
     }
 
     #[test]
-    fn test_tokenize_complex_expression() {
-        let tokens = Template::<'{', '}'>::tokenize("name:pad:10");
+    fn complex() {
+        let content = "hi_world:13.:hi mom!-129-836;#$%-^&-45.6*()";
+        let tokens = Template::<'{', '}'>::tokenize(content);
+
         assert_eq!(
             tokens,
             vec![
-                Token::Literal("name".to_string()),
+                Token::Slice(s!("hi_world")),
                 Token::Symbol(':'),
-                Token::Literal("pad".to_string()),
+                Token::Float(13.0),
                 Token::Symbol(':'),
-                Token::Int(10)
-            ]
-        );
-    }
-
-    #[test]
-    fn test_tokenize_with_delimiters_mixed() {
-        let tokens = Template::<'{', '}'>::tokenize("hello{world}123");
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Literal("hello".to_string()),
-                Token::Delimiter('{'),
-                Token::Literal("world".to_string()),
-                Token::Delimiter('}'),
-                Token::Int(123)
-            ]
-        );
-    }
-
-    #[test]
-    fn test_tokenize_multiple_numbers() {
-        let tokens = Template::<'{', '}'>::tokenize("123 456 789");
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Int(123),
-                Token::Literal(" ".to_string()),
-                Token::Int(456),
-                Token::Literal(" ".to_string()),
-                Token::Int(789)
-            ]
-        );
-    }
-
-    #[test]
-    fn test_tokenize_negative_number_as_symbol_and_number() {
-        // Note: negative numbers are tokenized as separate symbol and number
-        let tokens = Template::<'{', '}'>::tokenize("-123");
-        assert_eq!(tokens, vec![Token::Symbol('-'), Token::Int(123)]);
-    }
-
-    #[test]
-    fn test_tokenize_large_number() {
-        let tokens = Template::<'{', '}'>::tokenize("9223372036854775807");
-        assert_eq!(tokens, vec![Token::Int(9223372036854775807i64)]);
-    }
-
-    #[test]
-    fn test_tokenize_zero() {
-        let tokens = Template::<'{', '}'>::tokenize("0");
-        assert_eq!(tokens, vec![Token::Int(0)]);
-    }
-
-    #[test]
-    fn test_tokenize_leading_zeros() {
-        let tokens = Template::<'{', '}'>::tokenize("007");
-        assert_eq!(tokens, vec![Token::Int(7)]);
-    }
-
-    #[test]
-    fn test_tokenize_special_characters() {
-        let tokens = Template::<'{', '}'>::tokenize("@#$%^&*()");
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Symbol('@'),
+                Token::Slice(s!("hi mom")),
+                Token::Symbol('!'),
+                Token::Int(-129),
+                Token::Int(-836),
+                Token::Symbol(';'),
                 Token::Symbol('#'),
                 Token::Symbol('$'),
                 Token::Symbol('%'),
+                Token::Symbol('-'),
                 Token::Symbol('^'),
                 Token::Symbol('&'),
+                Token::Float(-45.6),
                 Token::Symbol('*'),
                 Token::Symbol('('),
-                Token::Symbol(')')
+                Token::Symbol(')'),
             ]
-        );
-    }
-
-    #[test]
-    fn test_tokenize_tabs_and_newlines() {
-        let tokens = Template::<'{', '}'>::tokenize("hello\tworld\n");
-        assert_eq!(tokens, vec![Token::Literal("hello\tworld\n".to_string())]);
-    }
-
-    #[test]
-    fn test_tokenize_mixed_complex() {
-        let tokens = Template::<'{', '}'>::tokenize("user:format:left:20");
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Literal("user".to_string()),
-                Token::Symbol(':'),
-                Token::Literal("format".to_string()),
-                Token::Symbol(':'),
-                Token::Literal("left".to_string()),
-                Token::Symbol(':'),
-                Token::Int(20)
-            ]
-        );
-    }
-
-    #[test]
-    fn test_tokenize_function_call_style() {
-        let tokens = Template::<'{', '}'>::tokenize("func(arg1, 42)");
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Literal("func".to_string()),
-                Token::Symbol('('),
-                Token::Literal("arg".to_string()),
-                Token::Int(1),
-                Token::Symbol(','),
-                Token::Literal(" ".to_string()),
-                Token::Int(42),
-                Token::Symbol(')')
-            ]
-        );
-    }
-
-    #[test]
-    fn test_tokenize_with_custom_delimiters() {
-        let tokens = Template::<'[', ']'>::tokenize("name[value]123");
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Literal("name".to_string()),
-                Token::Delimiter('['),
-                Token::Literal("value".to_string()),
-                Token::Delimiter(']'),
-                Token::Int(123)
-            ]
-        );
-    }
-
-    #[test]
-    fn test_tokenize_only_whitespace() {
-        let tokens = Template::<'{', '}'>::tokenize("   \t\n  ");
-        assert_eq!(tokens, vec![Token::Literal("   \t\n  ".to_string())]);
-    }
-
-    #[test]
-    fn test_tokenize_alternating_types() {
-        let tokens = Template::<'{', '}'>::tokenize("a1b2c3");
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Literal("a".to_string()),
-                Token::Int(1),
-                Token::Literal("b".to_string()),
-                Token::Int(2),
-                Token::Literal("c".to_string()),
-                Token::Int(3)
-            ]
-        );
+        )
     }
 }
-
 #[cfg(test)]
 mod parsing {
     use super::*;
+    use smacro::s;
     use std::fmt::Debug;
 
     // Mock directive for testing
@@ -636,7 +574,7 @@ mod parsing {
     impl Parser for MockParser {
         fn parse(_tokens: &[Token], content: &str) -> Option<Box<dyn Directive>> {
             Some(Box::new(MockDirective {
-                content: content.to_owned(),
+                content: s!(content),
             }))
         }
     }
@@ -644,7 +582,7 @@ mod parsing {
     // Test helper to create a context
     fn create_test_context() -> Context {
         let mut ctx = HashMap::new();
-        ctx.insert("name", Value::String("John".to_string()));
+        ctx.insert("name", Value::String(s!("John")));
         ctx.insert("age", Value::Int(30));
         ctx.insert("active", Value::Bool(true));
         ctx
@@ -652,28 +590,28 @@ mod parsing {
 
     #[test]
     fn test_parse_empty_template() {
-        let template = Template::<'{', '}'>::parse::<MockParser>("").unwrap();
+        let template = Template::<'{', '}'>::with_parser::<MockParser>("").unwrap();
         let result = template.format(&create_test_context()).unwrap();
         assert_eq!(result, "");
     }
 
     #[test]
     fn test_parse_literal_only() {
-        let template = Template::<'{', '}'>::parse::<MockParser>("Hello World").unwrap();
+        let template = Template::<'{', '}'>::with_parser::<MockParser>("Hello World").unwrap();
         let result = template.format(&create_test_context()).unwrap();
         assert_eq!(result, "Hello World");
     }
 
     #[test]
     fn test_parse_single_directive() {
-        let template = Template::<'{', '}'>::parse::<MockParser>("{name}").unwrap();
+        let template = Template::<'{', '}'>::with_parser::<MockParser>("{name}").unwrap();
         let result = template.format(&create_test_context()).unwrap();
         assert_eq!(result, "DIRECTIVE[name]");
     }
 
     #[test]
     fn test_parse_literal_with_directive() {
-        let template = Template::<'{', '}'>::parse::<MockParser>("Hello {name}!").unwrap();
+        let template = Template::<'{', '}'>::with_parser::<MockParser>("Hello {name}!").unwrap();
         let result = template.format(&create_test_context()).unwrap();
         assert_eq!(result, "Hello DIRECTIVE[name]!");
     }
@@ -681,28 +619,30 @@ mod parsing {
     #[test]
     fn test_parse_multiple_directives() {
         let template =
-            Template::<'{', '}'>::parse::<MockParser>("{name} is {age} years old").unwrap();
+            Template::<'{', '}'>::with_parser::<MockParser>("{name} is {age} years old").unwrap();
         let result = template.format(&create_test_context()).unwrap();
         assert_eq!(result, "DIRECTIVE[name] is DIRECTIVE[age] years old");
     }
 
     #[test]
     fn test_parse_consecutive_directives() {
-        let template = Template::<'{', '}'>::parse::<MockParser>("{name}{age}").unwrap();
+        let template = Template::<'{', '}'>::with_parser::<MockParser>("{name}{age}").unwrap();
         let result = template.format(&create_test_context()).unwrap();
         assert_eq!(result, "DIRECTIVE[name]DIRECTIVE[age]");
     }
 
     #[test]
     fn test_parse_escaped_opening_delimiter() {
-        let template = Template::<'{', '}'>::parse::<MockParser>("{{not a directive}}").unwrap();
+        let template =
+            Template::<'{', '}'>::with_parser::<MockParser>("{{not a directive}}").unwrap();
         let result = template.format(&create_test_context()).unwrap();
         assert_eq!(result, "{not a directive}");
     }
 
     #[test]
     fn test_parse_escaped_closing_delimiter() {
-        let template = Template::<'{', '}'>::parse::<MockParser>("This is }} not escaped").unwrap();
+        let template =
+            Template::<'{', '}'>::with_parser::<MockParser>("This is }} not escaped").unwrap();
         let result = template.format(&create_test_context()).unwrap();
         assert_eq!(result, "This is } not escaped");
     }
@@ -710,7 +650,7 @@ mod parsing {
     #[test]
     fn test_parse_mixed_escaped_and_directive() {
         let template =
-            Template::<'{', '}'>::parse::<MockParser>("{{escaped}} {name} }}also escaped{{")
+            Template::<'{', '}'>::with_parser::<MockParser>("{{escaped}} {name} }}also escaped{{")
                 .unwrap();
         let result = template.format(&create_test_context()).unwrap();
         assert_eq!(result, "{escaped} DIRECTIVE[name] }also escaped{");
@@ -718,7 +658,7 @@ mod parsing {
 
     #[test]
     fn test_parse_directive_with_alignment_left() {
-        let template = Template::<'{', '}'>::parse::<MockParser>("{name<}").unwrap();
+        let template = Template::<'{', '}'>::with_parser::<MockParser>("{name<}").unwrap();
         assert_eq!(template.alignment(), Alignment::Left);
         let result = template.format(&create_test_context()).unwrap();
         assert_eq!(result, "DIRECTIVE[name]");
@@ -726,7 +666,7 @@ mod parsing {
 
     #[test]
     fn test_parse_directive_with_alignment_right() {
-        let template = Template::<'{', '}'>::parse::<MockParser>("{name>}").unwrap();
+        let template = Template::<'{', '}'>::with_parser::<MockParser>("{name>}").unwrap();
         assert_eq!(template.alignment(), Alignment::Right);
         let result = template.format(&create_test_context()).unwrap();
         assert_eq!(result, "DIRECTIVE[name]");
@@ -734,7 +674,7 @@ mod parsing {
 
     #[test]
     fn test_parse_directive_with_alignment_center() {
-        let template = Template::<'{', '}'>::parse::<MockParser>("{name^}").unwrap();
+        let template = Template::<'{', '}'>::with_parser::<MockParser>("{name^}").unwrap();
         assert_eq!(template.alignment(), Alignment::Center);
         let result = template.format(&create_test_context()).unwrap();
         assert_eq!(result, "DIRECTIVE[name]");
@@ -742,27 +682,28 @@ mod parsing {
 
     #[test]
     fn test_parse_default_alignment() {
-        let template = Template::<'{', '}'>::parse::<MockParser>("{name}").unwrap();
+        let template = Template::<'{', '}'>::with_parser::<MockParser>("{name}").unwrap();
         assert_eq!(template.alignment(), Alignment::Left);
     }
 
     #[test]
     fn test_parse_complex_directive_content() {
-        let template = Template::<'{', '}'>::parse::<MockParser>("{user:format:pad:20}").unwrap();
+        let template =
+            Template::<'{', '}'>::with_parser::<MockParser>("{user:format:pad:20}").unwrap();
         let result = template.format(&create_test_context()).unwrap();
         assert_eq!(result, "DIRECTIVE[user:format:pad:20]");
     }
 
     #[test]
     fn test_parse_directive_with_numbers() {
-        let template = Template::<'{', '}'>::parse::<MockParser>("{value:123:pad}").unwrap();
+        let template = Template::<'{', '}'>::with_parser::<MockParser>("{value:123:pad}").unwrap();
         let result = template.format(&create_test_context()).unwrap();
         assert_eq!(result, "DIRECTIVE[value:123:pad]");
     }
 
     #[test]
     fn test_parse_custom_delimiters() {
-        let template = Template::<'[', ']'>::parse::<MockParser>("Hello [name]!").unwrap();
+        let template = Template::<'[', ']'>::with_parser::<MockParser>("Hello [name]!").unwrap();
         let result = template.format(&create_test_context()).unwrap();
         assert_eq!(result, "Hello DIRECTIVE[name]!");
     }
@@ -770,14 +711,15 @@ mod parsing {
     #[test]
     fn test_parse_custom_delimiters_with_escaping() {
         let template =
-            Template::<'[', ']'>::parse::<MockParser>("[[escaped]] [name] ]]also]]").unwrap();
+            Template::<'[', ']'>::with_parser::<MockParser>("[[escaped]] [name] ]]also]]").unwrap();
         let result = template.format(&create_test_context()).unwrap();
         assert_eq!(result, "[escaped] DIRECTIVE[name] ]also]");
     }
 
     #[test]
     fn test_parse_same_delimiters() {
-        let template = Template::<'|', '|'>::parse::<MockParser>("Hello |name| World").unwrap();
+        let template =
+            Template::<'|', '|'>::with_parser::<MockParser>("Hello |name| World").unwrap();
         let result = template.format(&create_test_context()).unwrap();
         assert_eq!(result, "Hello DIRECTIVE[name] World");
     }
@@ -785,7 +727,7 @@ mod parsing {
     // Error cases
     #[test]
     fn test_parse_missing_closing_delimiter() {
-        let result = Template::<'{', '}'>::parse::<MockParser>("Hello {name");
+        let result = Template::<'{', '}'>::with_parser::<MockParser>("Hello {name");
         assert!(matches!(
             result,
             Err(TemplateError::MissingClosedDelimiter('}'))
@@ -794,7 +736,7 @@ mod parsing {
 
     #[test]
     fn test_parse_missing_opening_delimiter() {
-        let result = Template::<'{', '}'>::parse::<MockParser>("Hello name}");
+        let result = Template::<'{', '}'>::with_parser::<MockParser>("Hello name}");
         assert!(matches!(
             result,
             Err(TemplateError::MissingOpenDelimiter('{'))
@@ -803,7 +745,7 @@ mod parsing {
 
     #[test]
     fn test_parse_nested_delimiters() {
-        let result = Template::<'{', '}'>::parse::<MockParser>("Hello {name {age}}");
+        let result = Template::<'{', '}'>::with_parser::<MockParser>("Hello {name {age}}");
         assert!(matches!(
             result,
             Err(TemplateError::MissingClosedDelimiter('}'))
@@ -812,7 +754,7 @@ mod parsing {
 
     #[test]
     fn test_parse_unbalanced_delimiters_complex() {
-        let result = Template::<'{', '}'>::parse::<MockParser>("{name} {age");
+        let result = Template::<'{', '}'>::with_parser::<MockParser>("{name} {age");
         assert!(matches!(
             result,
             Err(TemplateError::MissingClosedDelimiter('}'))
@@ -821,7 +763,7 @@ mod parsing {
 
     #[test]
     fn test_parse_extra_closing_delimiter() {
-        let result = Template::<'{', '}'>::parse::<MockParser>("Hello {name}} extra");
+        let result = Template::<'{', '}'>::with_parser::<MockParser>("Hello {name}} extra");
 
         assert!(matches!(
             result,
@@ -846,27 +788,28 @@ mod parsing {
 
     #[test]
     fn test_parse_directive_parsing_failure() {
-        let result = Template::<'{', '}'>::parse::<FailingParser>("Hello {fail}");
+        let result = Template::<'{', '}'>::with_parser::<FailingParser>("Hello {fail}");
         assert!(matches!(result, Err(TemplateError::DirectiveParsing(_))));
     }
 
     #[test]
     fn test_parse_whitespace_in_directive() {
-        let template = Template::<'{', '}'>::parse::<MockParser>("{  name with spaces  }").unwrap();
+        let template =
+            Template::<'{', '}'>::with_parser::<MockParser>("{  name with spaces  }").unwrap();
         let result = template.format(&create_test_context()).unwrap();
         assert_eq!(result, "DIRECTIVE[  name with spaces  ]");
     }
 
     #[test]
     fn test_parse_empty_directive() {
-        let template = Template::<'{', '}'>::parse::<MockParser>("{}").unwrap();
+        let template = Template::<'{', '}'>::with_parser::<MockParser>("{}").unwrap();
         let result = template.format(&create_test_context()).unwrap();
         assert_eq!(result, "DIRECTIVE[]");
     }
 
     #[test]
     fn test_parse_directive_with_special_chars() {
-        let template = Template::<'{', '}'>::parse::<MockParser>("{name@#$%^&*()}").unwrap();
+        let template = Template::<'{', '}'>::with_parser::<MockParser>("{name@#$%^&*()}").unwrap();
         let result = template.format(&create_test_context()).unwrap();
         assert_eq!(result, "DIRECTIVE[name@#$%^&*()]");
     }
@@ -874,7 +817,7 @@ mod parsing {
     #[test]
     fn test_parse_multiple_alignment_characters() {
         // Only the last character should be treated as alignment
-        let template = Template::<'{', '}'>::parse::<MockParser>("{name<>^}").unwrap();
+        let template = Template::<'{', '}'>::with_parser::<MockParser>("{name<>^}").unwrap();
         assert_eq!(template.alignment(), Alignment::Center);
         let result = template.format(&create_test_context()).unwrap();
         assert_eq!(result, "DIRECTIVE[name<>]");
@@ -882,7 +825,7 @@ mod parsing {
 
     #[test]
     fn test_parse_alignment_in_middle_not_treated_as_alignment() {
-        let template = Template::<'{', '}'>::parse::<MockParser>("{na<me}").unwrap();
+        let template = Template::<'{', '}'>::with_parser::<MockParser>("{na<me}").unwrap();
         assert_eq!(template.alignment(), Alignment::Left); // default
         let result = template.format(&create_test_context()).unwrap();
         assert_eq!(result, "DIRECTIVE[na<me]");
@@ -890,7 +833,7 @@ mod parsing {
 
     #[test]
     fn test_parse_unicode_content() {
-        let template = Template::<'{', '}'>::parse::<MockParser>("Hello {名前} 🌟").unwrap();
+        let template = Template::<'{', '}'>::with_parser::<MockParser>("Hello {名前} 🌟").unwrap();
         let result = template.format(&create_test_context()).unwrap();
         assert_eq!(result, "Hello DIRECTIVE[名前] 🌟");
     }
@@ -898,7 +841,7 @@ mod parsing {
     #[test]
     fn test_parse_long_template() {
         let long_template = "Start ".repeat(100) + "{name}" + &" End".repeat(100);
-        let template = Template::<'{', '}'>::parse::<MockParser>(&long_template).unwrap();
+        let template = Template::<'{', '}'>::with_parser::<MockParser>(&long_template).unwrap();
         let result = template.format(&create_test_context()).unwrap();
         let expected = "Start ".repeat(100) + "DIRECTIVE[name]" + &" End".repeat(100);
         assert_eq!(result, expected);
