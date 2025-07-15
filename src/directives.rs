@@ -187,74 +187,297 @@ impl Directive for RepeatDirective {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum ComparisonOp {
+    Equal,
+    NotEqual,
+    LessThan,
+    LessThanOrEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
+}
+
+#[derive(Debug, Clone)]
+pub struct Condition {
+    pub left: String,
+    pub op: ComparisonOp,
+    pub right: String,
+}
+
 /// A directive that conditionally returns one of two strings based on a context value.
 ///
-/// The conditional directive evaluates a condition variable from the context and returns
-/// different content based on whether the condition is truthy or falsy. The syntax is
-/// `{condition?true_part:false_part}`.
+/// The conditional directive supports both simple boolean conditions and comparison operations.
+/// The syntax is `{condition?true_part:false_part}`.
 ///
-/// # Condition Evaluation
-/// - If the condition variable exists in context and is a [`Value::Bool`], its boolean value is used
-/// - If the condition variable exists but is not a boolean, it is treated as `true` (truthy)
-/// - If the condition variable does not exist in context, it is treated as `false` (falsy)
+/// # Supported Comparisons
+/// - `{var==value?true:false}` - Equality comparison
+/// - `{var!=value?true:false}` - Inequality comparison  
+/// - `{var<value?true:false}` - Less than (numeric)
+/// - `{var<=value?true:false}` - Less than or equal (numeric)
+/// - `{var>value?true:false}` - Greater than (numeric)
+/// - `{var>=value?true:false}` - Greater than or equal (numeric)
+/// - `{var?true:false}` - Simple boolean/existence check
 ///
-/// This behavior mirrors common programming language patterns where variables can be
-/// evaluated in a boolean context.
+/// # Value Resolution
+/// - Variable names are resolved from the context first
+/// - If not found in context, treated as literal values
+/// - Boolean values: "true", "false" (case-insensitive)
+/// - Numeric values: integers and floats
+/// - String values: everything else
 ///
 /// # Example
 ///
 /// ```no_run
 /// let mut ctx = Context::new();
+/// ctx.insert("age", Value::Int(25));
+/// ctx.insert("name", Value::String("Alice".into()));
 /// ctx.insert("is_admin", Value::Bool(true));
-/// ctx.insert("username", Value::String("Alice".into()));
 ///
-/// // Boolean condition
-/// let directive = ConditionalDirective {
-///     condition: "is_admin".into(),
-///     parts: ("Admin Panel".into(), "User Panel".into()),
-/// };
+/// // Numeric comparison
+/// let directive = ConditionalDirective::new("age>=18", "Adult", "Minor");
+/// assert_eq!(directive.execute(&ctx).unwrap(), "Adult");
+///
+/// // String comparison
+/// let directive = ConditionalDirective::new("name==Alice", "Welcome Alice", "Unknown user");
+/// assert_eq!(directive.execute(&ctx).unwrap(), "Welcome Alice");
+///
+/// // Boolean check
+/// let directive = ConditionalDirective::new("is_admin", "Admin Panel", "User Panel");
 /// assert_eq!(directive.execute(&ctx).unwrap(), "Admin Panel");
-///
-/// // Non-boolean but existing condition (truthy)
-/// let directive2 = ConditionalDirective {
-///     condition: "username".into(),
-///     parts: ("Logged In".into(), "Guest".into()),
-/// };
-/// assert_eq!(directive2.execute(&ctx).unwrap(), "Logged In");
-///
-/// // Non-existing condition (falsy)
-/// let directive3 = ConditionalDirective {
-///     condition: "missing_var".into(),
-///     parts: ("Found".into(), "Not Found".into()),
-/// };
-/// assert_eq!(directive3.execute(&ctx).unwrap(), "Not Found");
 /// ```
 #[derive(Debug)]
 pub struct ConditionalDirective {
-    condition: String,
+    condition: Condition,
     parts: (String, String),
+}
+
+impl ConditionalDirective {
+    pub fn new(condition_str: &str, true_part: &str, false_part: &str) -> Self {
+        let condition = Self::parse_condition(condition_str).unwrap_or_else(|| Condition {
+            left: condition_str.to_string(),
+            op: ComparisonOp::Equal,
+            right: "true".to_string(),
+        });
+
+        Self {
+            condition,
+            parts: (true_part.to_string(), false_part.to_string()),
+        }
+    }
+
+    fn parse_condition(condition_str: &str) -> Option<Condition> {
+        let condition_str = condition_str.trim();
+
+        // Check for two-character operators first
+        if let Some(pos) = condition_str.find("==") {
+            let (left, right) = condition_str.split_at(pos);
+            return Some(Condition {
+                left: left.trim().to_string(),
+                op: ComparisonOp::Equal,
+                right: right[2..].trim().to_string(),
+            });
+        }
+
+        if let Some(pos) = condition_str.find("!=") {
+            let (left, right) = condition_str.split_at(pos);
+            return Some(Condition {
+                left: left.trim().to_string(),
+                op: ComparisonOp::NotEqual,
+                right: right[2..].trim().to_string(),
+            });
+        }
+
+        if let Some(pos) = condition_str.find("<=") {
+            let (left, right) = condition_str.split_at(pos);
+            return Some(Condition {
+                left: left.trim().to_string(),
+                op: ComparisonOp::LessThanOrEqual,
+                right: right[2..].trim().to_string(),
+            });
+        }
+
+        if let Some(pos) = condition_str.find(">=") {
+            let (left, right) = condition_str.split_at(pos);
+            return Some(Condition {
+                left: left.trim().to_string(),
+                op: ComparisonOp::GreaterThanOrEqual,
+                right: right[2..].trim().to_string(),
+            });
+        }
+
+        // Check for single-character operators
+        if let Some(pos) = condition_str.find('<') {
+            let (left, right) = condition_str.split_at(pos);
+            return Some(Condition {
+                left: left.trim().to_string(),
+                op: ComparisonOp::LessThan,
+                right: right[1..].trim().to_string(),
+            });
+        }
+
+        if let Some(pos) = condition_str.find('>') {
+            let (left, right) = condition_str.split_at(pos);
+            return Some(Condition {
+                left: left.trim().to_string(),
+                op: ComparisonOp::GreaterThan,
+                right: right[1..].trim().to_string(),
+            });
+        }
+
+        // If no operator found, treat as simple boolean check (var == true)
+        Some(Condition {
+            left: condition_str.to_string(),
+            op: ComparisonOp::Equal,
+            right: "true".to_string(),
+        })
+    }
+
+    fn resolve_value(&self, name: &str, ctx: &Context) -> String {
+        // First check if it's a context variable
+        if let Some(value) = ctx.get(name) {
+            return s!(value);
+        }
+
+        // If not in context, use as literal
+        name.to_string()
+    }
+
+    fn parse_as_bool(&self, value: &str) -> Option<bool> {
+        match value.to_lowercase().as_str() {
+            "true" => Some(true),
+            "false" => Some(false),
+            _ => None,
+        }
+    }
+
+    fn parse_as_number(&self, value: &str) -> Option<f64> {
+        value.parse::<f64>().ok()
+    }
+
+    fn evaluate_condition(&self, ctx: &Context) -> bool {
+        let left_val = self.resolve_value(&self.condition.left, ctx);
+        let right_val = self.resolve_value(&self.condition.right, ctx);
+
+        match self.condition.op {
+            ComparisonOp::Equal => {
+                // Try boolean comparison first
+                if let (Some(l), Some(r)) = (
+                    self.parse_as_bool(&left_val),
+                    self.parse_as_bool(&right_val),
+                ) {
+                    return l == r;
+                }
+
+                // Try numeric comparison
+                if let (Some(l), Some(r)) = (
+                    self.parse_as_number(&left_val),
+                    self.parse_as_number(&right_val),
+                ) {
+                    return l == r;
+                }
+
+                // Fall back to string comparison
+                left_val == right_val
+            }
+
+            ComparisonOp::NotEqual => {
+                // Try boolean comparison first
+                if let (Some(l), Some(r)) = (
+                    self.parse_as_bool(&left_val),
+                    self.parse_as_bool(&right_val),
+                ) {
+                    return l != r;
+                }
+
+                // Try numeric comparison
+                if let (Some(l), Some(r)) = (
+                    self.parse_as_number(&left_val),
+                    self.parse_as_number(&right_val),
+                ) {
+                    return l != r;
+                }
+
+                // Fall back to string comparison
+                left_val != right_val
+            }
+
+            ComparisonOp::LessThan => {
+                if let (Some(l), Some(r)) = (
+                    self.parse_as_number(&left_val),
+                    self.parse_as_number(&right_val),
+                ) {
+                    l < r
+                } else {
+                    false
+                }
+            }
+
+            ComparisonOp::LessThanOrEqual => {
+                if let (Some(l), Some(r)) = (
+                    self.parse_as_number(&left_val),
+                    self.parse_as_number(&right_val),
+                ) {
+                    l <= r
+                } else {
+                    false
+                }
+            }
+
+            ComparisonOp::GreaterThan => {
+                if let (Some(l), Some(r)) = (
+                    self.parse_as_number(&left_val),
+                    self.parse_as_number(&right_val),
+                ) {
+                    l > r
+                } else {
+                    false
+                }
+            }
+
+            ComparisonOp::GreaterThanOrEqual => {
+                if let (Some(l), Some(r)) = (
+                    self.parse_as_number(&left_val),
+                    self.parse_as_number(&right_val),
+                ) {
+                    l >= r
+                } else {
+                    false
+                }
+            }
+        }
+    }
 }
 
 impl Directive for ConditionalDirective {
     fn execute(&self, ctx: &Context) -> Result<String, TemplateError> {
-        // Check if the condition is a context value
-        // If it exists and is not a boolean, treat it as true
-        // If it exists and is a boolean, use its value
-        // If it doesn't exist, treat it as false
-        let condition = match ctx.get(self.condition.as_str()) {
-            Some(v) => match v {
-                // Use the value if its an actual boolean
-                Value::Bool(b) => *b,
-                // It exists, so true
-                // Similar to what happens in most programming languages
-                // Where you can check if a variable exists by doing `if var {}`
-                _ => true,
-            },
-            // If it doesn't exist, return false
-            None => false,
-        };
+        // Handle simple boolean check (backward compatibility)
+        if self.condition.op == ComparisonOp::Equal && self.condition.right == "true" {
+            // Check if the condition is a context value
+            // If it exists and is not a boolean, treat it as true
+            // If it exists and is a boolean, use its value
+            // If it doesn't exist, treat it as false
+            let condition_result = match ctx.get(self.condition.left.as_str()) {
+                Some(v) => match v {
+                    // Use the value if its an actual boolean
+                    Value::Bool(b) => *b,
+                    // It exists, so true
+                    // Similar to what happens in most programming languages
+                    // Where you can check if a variable exists by doing `if var {}`
+                    _ => true,
+                },
+                // If it doesn't exist, return false
+                None => false,
+            };
 
-        if condition {
+            if condition_result {
+                return Ok(s!(self.parts.0));
+            } else {
+                return Ok(s!(self.parts.1));
+            }
+        }
+
+        // Handle comparison operations
+        if self.evaluate_condition(ctx) {
             Ok(s!(self.parts.0))
         } else {
             Ok(s!(self.parts.1))
@@ -292,25 +515,87 @@ impl Parser for DefaultParser {
             [Token::Slice(s)] => Some(Box::new(ReplaceDirective(s.clone()))),
 
             // {pattern:count}
-            [fist_part, Token::Symbol(':'), second_part] => {
-                Some(Box::new(RepeatDirective(s!(fist_part), s!(second_part))))
+            [first_part, Token::Symbol(':'), second_part] => {
+                // Check if this is actually a conditional with comparison operators
+                if Self::contains_question_mark(tokens) {
+                    return Self::parse_conditional(tokens);
+                }
+                Some(Box::new(RepeatDirective(s!(first_part), s!(second_part))))
             }
 
-            // {condition?part1:part2}
+            // Simple conditional: {condition?part1:part2}
             [
                 Token::Slice(condition),
                 Token::Symbol('?'),
                 Token::Slice(part1),
                 Token::Symbol(':'),
                 Token::Slice(part2),
-            ] => Some(Box::new(ConditionalDirective {
-                condition: s!(condition),
-                parts: (s!(part1), s!(part2)),
-            })),
+            ] => {
+                let conditional = ConditionalDirective::new(condition, part1, part2);
+                Some(Box::new(conditional))
+            }
 
-            // Just return the original string
-            _ => Some(Box::new(NoDirective(content.to_owned()))),
+            // Handle any other token pattern that might be a conditional
+            _ => {
+                if Self::contains_question_mark(tokens) {
+                    Self::parse_conditional(tokens)
+                } else {
+                    Some(Box::new(NoDirective(content.to_owned())))
+                }
+            }
         }
+    }
+}
+
+impl DefaultParser {
+    fn contains_question_mark(tokens: &[Token]) -> bool {
+        tokens
+            .iter()
+            .any(|token| matches!(token, Token::Symbol('?')))
+    }
+
+    fn parse_conditional(tokens: &[Token]) -> Option<Box<dyn Directive>> {
+        // Find the positions of '?' and ':' symbols
+        let question_pos = tokens
+            .iter()
+            .position(|t| matches!(t, Token::Symbol('?')))?;
+        let colon_pos = tokens
+            .iter()
+            .rposition(|t| matches!(t, Token::Symbol(':')))?;
+
+        // Ensure we have the right order: condition ? part1 : part2
+        if question_pos >= colon_pos {
+            return None;
+        }
+
+        // Extract the condition part (everything before '?')
+        let condition_tokens = &tokens[..question_pos];
+        let condition_str = Self::tokens_to_string(condition_tokens);
+
+        // Extract part1 (between '?' and ':')
+        let part1_tokens = &tokens[question_pos + 1..colon_pos];
+        let part1_str = Self::tokens_to_string(part1_tokens);
+
+        // Extract part2 (everything after ':')
+        let part2_tokens = &tokens[colon_pos + 1..];
+        let part2_str = Self::tokens_to_string(part2_tokens);
+
+        let conditional = ConditionalDirective::new(&condition_str, &part1_str, &part2_str);
+        Some(Box::new(conditional))
+    }
+
+    fn tokens_to_string(tokens: &[Token]) -> String {
+        tokens
+            .iter()
+            .map(|token| match token {
+                Token::Slice(s) => s.clone(),
+                Token::Symbol(c) => c.to_string(),
+                Token::Int(i) => i.to_string(),
+                Token::Float(f) => f.to_string(),
+                Token::Uknown(u) => u.to_string(),
+            })
+            .collect::<Vec<_>>()
+            .join("")
     }
 }
 
@@ -400,6 +685,102 @@ mod default_parser {
         let template = "{username?Logged In:Guest}";
         let template = Template::<'{', '}'>::parse(template).unwrap();
 
+        assert_eq!(template.format(&ctx).unwrap(), "Logged In");
+    }
+
+    #[test]
+    fn test_equality_comparisons() {
+        let template = "{name==Alice?Welcome Alice:Unknown user}";
+        let template = Template::<'{', '}'>::parse(template).unwrap();
+
+        let ctx = map! {
+            "name" => Value::String("Alice".to_string()),
+        };
+        assert_eq!(template.format(&ctx).unwrap(), "Welcome Alice");
+
+        let ctx = map! {
+            "name" => Value::String("Bob".to_string()),
+        };
+        assert_eq!(template.format(&ctx).unwrap(), "Unknown user");
+    }
+
+    #[test]
+    fn test_numeric_comparisons() {
+        let template = "{age>=18?Adult:Minor}";
+        let template = Template::<'{', '}'>::parse(template).unwrap();
+
+        let ctx = map! {
+            "age" => Value::Int(25),
+        };
+        assert_eq!(template.format(&ctx).unwrap(), "Adult");
+
+        let ctx = map! {
+            "age" => Value::Int(16),
+        };
+        assert_eq!(template.format(&ctx).unwrap(), "Minor");
+    }
+
+    #[test]
+    fn test_backward_comparisons() {
+        let template = "{10>=value?Greater than or equal:Less than}";
+        let template = Template::<'{', '}'>::parse(template).unwrap();
+
+        let ctx = map! {
+            "value" => Value::Int(5),
+        };
+
+        assert_eq!(template.format(&ctx).unwrap(), "Greater than or equal");
+
+        let ctx = map! {
+            "value" => Value::Int(15),
+        };
+
+        assert_eq!(template.format(&ctx).unwrap(), "Less than");
+    }
+
+    #[test]
+    fn test_boolean_comparisons() {
+        let template = "{is_admin==true?Admin Panel:User Panel}";
+        let template = Template::<'{', '}'>::parse(template).unwrap();
+
+        let ctx = map! {
+            "is_admin" => Value::Bool(true),
+        };
+        assert_eq!(template.format(&ctx).unwrap(), "Admin Panel");
+
+        let ctx = map! {
+            "is_admin" => Value::Bool(false),
+        };
+        assert_eq!(template.format(&ctx).unwrap(), "User Panel");
+    }
+
+    #[test]
+    fn test_literal_comparisons() {
+        let template = "{status==active?System Online:System Offline}";
+        let template = Template::<'{', '}'>::parse(template).unwrap();
+
+        // Test with literal values (not in context)
+        let ctx = map![];
+        assert_eq!(template.format(&ctx).unwrap(), "System Offline");
+    }
+
+    #[test]
+    fn test_backward_compatibility() {
+        // Test that simple boolean conditions still work
+        let template = "{is_admin?Admin Panel:User Panel}";
+        let template = Template::<'{', '}'>::parse(template).unwrap();
+
+        let ctx = map! {
+            "is_admin" => Value::Bool(true),
+        };
+        assert_eq!(template.format(&ctx).unwrap(), "Admin Panel");
+
+        let ctx = map! {
+            "username" => Value::String("Alice".to_string()),
+        };
+
+        let template = "{username?Logged In:Guest}";
+        let template = Template::<'{', '}'>::parse(template).unwrap();
         assert_eq!(template.format(&ctx).unwrap(), "Logged In");
     }
 }
