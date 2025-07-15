@@ -485,6 +485,71 @@ impl Directive for ConditionalDirective {
     }
 }
 
+/// A directive that matches a variable against multiple cases and returns the corresponding value.
+///
+/// The switch directive works like a switch statement, checking a variable against multiple
+/// patterns and returning the first matching result. The syntax is:
+/// `{[variable](case1:result1)(case2:result2)(case3:result3)}`
+///
+/// # Behavior
+/// - The variable is resolved from the context first, then treated as literal if not found
+/// - Cases are checked in order until a match is found
+/// - If no case matches, returns an empty string
+/// - Both the variable and case values support context variable resolution
+///
+/// # Example
+///
+/// ```no_run
+/// let mut ctx = Context::new();
+/// ctx.insert("status", Value::String("active".into()));
+///
+/// // switch directive with literal cases
+/// let directive = SwitchDirective::new("status", vec![
+///     ("active".into(), "System Online".into()),
+///     ("inactive".into(), "System Offline".into()),
+///     ("maintenance".into(), "Under Maintenance".into()),
+/// ]);
+/// assert_eq!(directive.execute(&ctx).unwrap(), "System Online");
+/// ```
+#[derive(Debug)]
+pub struct SwitchDirective {
+    variable: String,
+    cases: Vec<(String, String)>, // (pattern, result)
+}
+
+impl SwitchDirective {
+    pub fn new(variable: String, cases: Vec<(String, String)>) -> Self {
+        Self { variable, cases }
+    }
+
+    fn resolve_value(&self, name: &str, ctx: &Context) -> String {
+        // First check if it's a context variable
+        if let Some(value) = ctx.get(name) {
+            return s!(value);
+        }
+
+        // If not in context, use as literal
+        name.to_string()
+    }
+}
+
+impl Directive for SwitchDirective {
+    fn execute(&self, ctx: &Context) -> Result<String, TemplateError> {
+        let variable_value = self.resolve_value(&self.variable, ctx);
+
+        // Check each case in order
+        for (pattern, result) in &self.cases {
+            let pattern_value = self.resolve_value(pattern, ctx);
+            if variable_value == pattern_value {
+                return Ok(self.resolve_value(result, ctx));
+            }
+        }
+
+        // No match found, return empty string
+        Ok(String::new())
+    }
+}
+
 /// The default parser used to convert template tokens into executable directives.
 ///
 /// It supports three kinds of directives:
@@ -535,9 +600,14 @@ impl Parser for DefaultParser {
                 Some(Box::new(conditional))
             }
 
-            // Handle any other token pattern that might be a conditional
+            // Handle any other token pattern
             _ => {
-                if Self::contains_question_mark(tokens) {
+                // Check if it's a bracket conditional first
+                if Self::is_bracket_conditional(tokens) {
+                    Self::parse_bracket_conditional(tokens)
+                } else if Self::is_switch_directive(tokens) {
+                    Self::parse_switch_directive(tokens)
+                } else if Self::contains_question_mark(tokens) {
                     Self::parse_conditional(tokens)
                 } else {
                     Some(Box::new(NoDirective(content.to_owned())))
@@ -552,6 +622,253 @@ impl DefaultParser {
         tokens
             .iter()
             .any(|token| matches!(token, Token::Symbol('?')))
+    }
+
+    fn is_switch_directive(tokens: &[Token]) -> bool {
+        // Check if the pattern starts with '[' and contains '(' and ')'
+        if tokens.is_empty() {
+            return false;
+        }
+
+        // Look for the pattern: [variable](case:result)(case:result)...
+        let has_opening_bracket = tokens.iter().any(|t| matches!(t, Token::Symbol('[')));
+        let has_closing_bracket = tokens.iter().any(|t| matches!(t, Token::Symbol(']')));
+        let has_parentheses = tokens.iter().any(|t| matches!(t, Token::Symbol('(')))
+            && tokens.iter().any(|t| matches!(t, Token::Symbol(')')));
+
+        if !has_opening_bracket || !has_closing_bracket || !has_parentheses {
+            return false;
+        }
+
+        // Count parentheses pairs to distinguish between switch and conditional directives
+        let paren_pairs = Self::count_parentheses_pairs(tokens);
+
+        // Switch directive: [var](case:result)(case:result)... (has colons in parentheses)
+        // Conditional directive: [condition](true_case)(false_case) (no colons, exactly 2 pairs)
+        if paren_pairs == 2 {
+            // Check if parentheses contain colons (match) or not (conditional)
+            return Self::parentheses_contain_colons(tokens);
+        }
+
+        // More than 2 pairs, likely a switch directive
+        paren_pairs > 2
+    }
+
+    fn count_parentheses_pairs(tokens: &[Token]) -> usize {
+        let mut count = 0;
+        let mut i = 0;
+
+        while i < tokens.len() {
+            if matches!(tokens[i], Token::Symbol('(')) {
+                count += 1;
+                // Skip to the matching closing parenthesis
+                let mut paren_count = 1;
+                i += 1;
+                while i < tokens.len() && paren_count > 0 {
+                    match tokens[i] {
+                        Token::Symbol('(') => paren_count += 1,
+                        Token::Symbol(')') => paren_count -= 1,
+                        _ => {}
+                    }
+                    i += 1;
+                }
+            } else {
+                i += 1;
+            }
+        }
+
+        count
+    }
+
+    fn parentheses_contain_colons(tokens: &[Token]) -> bool {
+        let mut i = 0;
+
+        while i < tokens.len() {
+            if matches!(tokens[i], Token::Symbol('(')) {
+                let mut paren_count = 1;
+                i += 1;
+
+                while i < tokens.len() && paren_count > 0 {
+                    match tokens[i] {
+                        Token::Symbol('(') => paren_count += 1,
+                        Token::Symbol(')') => paren_count -= 1,
+                        Token::Symbol(':') if paren_count == 1 => return true,
+                        _ => {}
+                    }
+                    i += 1;
+                }
+            } else {
+                i += 1;
+            }
+        }
+
+        false
+    }
+
+    fn is_bracket_conditional(tokens: &[Token]) -> bool {
+        if tokens.is_empty() {
+            return false;
+        }
+
+        let has_opening_bracket = tokens.iter().any(|t| matches!(t, Token::Symbol('[')));
+        let has_closing_bracket = tokens.iter().any(|t| matches!(t, Token::Symbol(']')));
+        let has_parentheses = tokens.iter().any(|t| matches!(t, Token::Symbol('(')))
+            && tokens.iter().any(|t| matches!(t, Token::Symbol(')')));
+
+        if !has_opening_bracket || !has_closing_bracket || !has_parentheses {
+            return false;
+        }
+
+        let paren_pairs = Self::count_parentheses_pairs(tokens);
+
+        // Conditional directive: exactly 2 parentheses pairs with no colons inside
+        paren_pairs == 2 && !Self::parentheses_contain_colons(tokens)
+    }
+
+    fn parse_bracket_conditional(tokens: &[Token]) -> Option<Box<dyn Directive>> {
+        // Find the opening and closing brackets for the condition
+        let bracket_start = tokens
+            .iter()
+            .position(|t| matches!(t, Token::Symbol('[')))?;
+        let bracket_end = tokens
+            .iter()
+            .position(|t| matches!(t, Token::Symbol(']')))?;
+
+        if bracket_start >= bracket_end {
+            return None;
+        }
+
+        // Extract the condition
+        let condition_tokens = &tokens[bracket_start + 1..bracket_end];
+        let condition_str = Self::tokens_to_string(condition_tokens);
+
+        // Parse the two cases after the closing bracket
+        let remaining_tokens = &tokens[bracket_end + 1..];
+        let cases = Self::parse_conditional_cases(remaining_tokens)?;
+
+        if cases.len() != 2 {
+            return None;
+        }
+
+        let conditional = ConditionalDirective::new(&condition_str, &cases[0], &cases[1]);
+        Some(Box::new(conditional))
+    }
+
+    fn parse_conditional_cases(tokens: &[Token]) -> Option<Vec<String>> {
+        let mut cases = Vec::new();
+        let mut i = 0;
+
+        while i < tokens.len() {
+            // Look for opening parenthesis
+            if !matches!(tokens[i], Token::Symbol('(')) {
+                i += 1;
+                continue;
+            }
+
+            // Find the matching closing parenthesis
+            let mut paren_count = 1;
+            let mut j = i + 1;
+
+            while j < tokens.len() && paren_count > 0 {
+                match tokens[j] {
+                    Token::Symbol('(') => paren_count += 1,
+                    Token::Symbol(')') => paren_count -= 1,
+                    _ => {}
+                }
+                j += 1;
+            }
+
+            if paren_count != 0 {
+                // Unmatched parentheses
+                return None;
+            }
+
+            // Extract tokens between parentheses
+            let case_tokens = &tokens[i + 1..j - 1];
+            let case_str = Self::tokens_to_string(case_tokens);
+
+            cases.push(case_str);
+
+            i = j;
+        }
+
+        if cases.is_empty() { None } else { Some(cases) }
+    }
+
+    fn parse_switch_directive(tokens: &[Token]) -> Option<Box<dyn Directive>> {
+        // Find the opening and closing brackets for the variable
+        let bracket_start = tokens
+            .iter()
+            .position(|t| matches!(t, Token::Symbol('[')))?;
+        let bracket_end = tokens
+            .iter()
+            .position(|t| matches!(t, Token::Symbol(']')))?;
+
+        if bracket_start >= bracket_end {
+            return None;
+        }
+
+        // Extract the variable name
+        let variable_tokens = &tokens[bracket_start + 1..bracket_end];
+        let variable = Self::tokens_to_string(variable_tokens);
+
+        // Parse the cases after the closing bracket
+        let remaining_tokens = &tokens[bracket_end + 1..];
+        let cases = Self::parse_match_cases(remaining_tokens)?;
+
+        Some(Box::new(SwitchDirective::new(variable, cases)))
+    }
+
+    fn parse_match_cases(tokens: &[Token]) -> Option<Vec<(String, String)>> {
+        let mut cases = Vec::new();
+        let mut i = 0;
+
+        while i < tokens.len() {
+            // Look for opening parenthesis
+            if !matches!(tokens[i], Token::Symbol('(')) {
+                i += 1;
+                continue;
+            }
+
+            // Find the matching closing parenthesis
+            let mut paren_count = 1;
+            let mut j = i + 1;
+
+            while j < tokens.len() && paren_count > 0 {
+                match tokens[j] {
+                    Token::Symbol('(') => paren_count += 1,
+                    Token::Symbol(')') => paren_count -= 1,
+                    _ => {}
+                }
+                j += 1;
+            }
+
+            if paren_count != 0 {
+                // Unmatched parentheses
+                return None;
+            }
+
+            // Extract tokens between parentheses
+            let case_tokens = &tokens[i + 1..j - 1];
+
+            // Find the colon separator
+            let colon_pos = case_tokens
+                .iter()
+                .position(|t| matches!(t, Token::Symbol(':')))?;
+
+            // Extract pattern and result
+            let pattern_tokens = &case_tokens[..colon_pos];
+            let result_tokens = &case_tokens[colon_pos + 1..];
+
+            let pattern = Self::tokens_to_string(pattern_tokens);
+            let result = Self::tokens_to_string(result_tokens);
+
+            cases.push((pattern, result));
+
+            i = j;
+        }
+
+        if cases.is_empty() { None } else { Some(cases) }
     }
 
     fn parse_conditional(tokens: &[Token]) -> Option<Box<dyn Directive>> {
@@ -665,7 +982,7 @@ mod default_parser {
 
     #[test]
     fn test_conditional_directive() {
-        let template = "{is_admin?Admin Panel:User Panel}";
+        let template = "{[is_admin]?(Admin Panel)(User Panel)}";
         let template = Template::<'{', '}'>::parse(template).unwrap();
         let ctx = map! {
             "is_admin" => Value::Bool(true),
@@ -782,5 +1099,73 @@ mod default_parser {
         let template = "{username?Logged In:Guest}";
         let template = Template::<'{', '}'>::parse(template).unwrap();
         assert_eq!(template.format(&ctx).unwrap(), "Logged In");
+    }
+
+    #[test]
+    fn test_switch_directive_basic() {
+        let template =
+            "status: {[status](active:online)(inactive:offline)(maintenance:under maintenance)}";
+        let template = Template::<'{', '}'>::parse(template).unwrap();
+
+        let ctx = map! {
+            "status" => Value::String("active".to_string()),
+        };
+        assert_eq!(template.format(&ctx).unwrap(), "status: online");
+
+        let ctx = map! {
+            "status" => Value::String("inactive".to_string()),
+        };
+        assert_eq!(template.format(&ctx).unwrap(), "status: offline");
+
+        let ctx = map! {
+            "status" => Value::String("maintenance".to_string()),
+        };
+        assert_eq!(template.format(&ctx).unwrap(), "status: under maintenance");
+    }
+
+    #[test]
+    fn test_switch_directive_no_match() {
+        let template = "status: {[status](active:online)(inactive:offline)}";
+        let template = Template::<'{', '}'>::parse(template).unwrap();
+
+        let ctx = map! {
+            "status" => Value::String("unknown".to_string()),
+        };
+        assert_eq!(template.format(&ctx).unwrap(), "status: ");
+    }
+
+    #[test]
+    fn test_switch_directive_with_context_variables() {
+        let template = "User: {[user_type](admin:Administrator)(user:Regular User)}";
+        let template = Template::<'{', '}'>::parse(template).unwrap();
+
+        let ctx = map! {
+            "user_type" => Value::String("admin".to_string()),
+        };
+        assert_eq!(template.format(&ctx).unwrap(), "User: Administrator");
+
+        let ctx = map! {
+            "user_type" => Value::String("user".to_string()),
+        };
+        assert_eq!(template.format(&ctx).unwrap(), "User: Regular User");
+    }
+
+    #[test]
+    fn test_switch_directive_variable_not_in_context() {
+        let template = "status: {[unknown_var](active:online)(inactive:offline)}";
+        let template = Template::<'{', '}'>::parse(template).unwrap();
+
+        let ctx = map![];
+        assert_eq!(template.format(&ctx).unwrap(), "status: ");
+    }
+
+    #[test]
+    fn test_switch_directive_literal_matching() {
+        // Test when the variable itself is a literal that matches a case
+        let template = "status: {[active](active:System is running)(inactive:System is down)}";
+        let template = Template::<'{', '}'>::parse(template).unwrap();
+
+        let ctx = map![];
+        assert_eq!(template.format(&ctx).unwrap(), "status: System is running");
     }
 }
