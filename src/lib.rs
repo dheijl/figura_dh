@@ -23,15 +23,19 @@ pub enum Value {
 
     /// Boolean value.
     Bool(bool),
+
+    /// &'static str value
+    Str(&'static str),
 }
 
-impl ToString for Value {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Value::String(s) => s!(s),
-            Value::Int(i) => s!(i),
-            Value::Float(f) => s!(f),
-            Value::Bool(b) => s!(b),
+            Value::String(s) => write!(f, "{}", s),
+            Value::Int(i) => write!(f, "{}", i),
+            Value::Float(n) => write!(f, "{}", n),
+            Value::Bool(b) => write!(f, "{}", b),
+            Value::Str(s) => write!(f, "{}", s),
         }
     }
 }
