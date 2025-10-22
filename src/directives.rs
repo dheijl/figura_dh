@@ -1,6 +1,8 @@
 use smacro::s;
 
+use crate::traits::*;
 use crate::{Context, TemplateError, Token, Value};
+
 use std::fmt::Debug;
 
 /// A trait representing an action to be executed when a directive is found
@@ -907,8 +909,8 @@ impl DefaultParser {
             .map(|token| match token {
                 Token::Slice(s) => s.clone(),
                 Token::Symbol(c) => c.to_string(),
-                Token::Int(i) => i.to_string(),
-                Token::Float(f) => f.to_string(),
+                Token::Int(i) => i.to_astring(),
+                Token::Float(f) => f.to_astring(),
                 Token::Uknown(u) => u.to_string(),
             })
             .collect::<Vec<_>>()

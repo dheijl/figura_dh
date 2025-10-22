@@ -2,12 +2,17 @@
 
 mod directives;
 mod error;
+mod traits;
 
 pub use directives::*;
 pub use error::*;
+pub use traits::*;
 
 use smacro::s;
-use std::{collections::HashMap, fmt::Display};
+use std::{
+    collections::HashMap,
+    fmt::{Display, Write},
+};
 
 /// A simple value type used in templating context.
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -31,11 +36,11 @@ pub enum Value {
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Value::String(s) => write!(f, "{}", s),
-            Value::Int(i) => write!(f, "{}", i),
-            Value::Float(n) => write!(f, "{}", n),
-            Value::Bool(b) => write!(f, "{}", b),
-            Value::Str(s) => write!(f, "{}", s),
+            Value::String(s) => f.write_str(s),
+            Value::Int(i) => f.write_str(&i.to_astring()),
+            Value::Float(n) => f.write_str(&n.to_astring()),
+            Value::Bool(b) => f.write_str(&b.to_string()),
+            Value::Str(s) => f.write_str(s),
         }
     }
 }
@@ -72,30 +77,25 @@ pub enum Token {
 impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Token::Slice(s) => write!(f, "{s}"),
-            Token::Symbol(s) => write!(f, "{s}"),
-            Token::Int(i) => write!(f, "{i}"),
-            Token::Float(n) => write!(f, "{n}"),
-            Token::Uknown(c) => write!(f, "{c}"),
+            Token::Slice(s) => f.write_str(s),
+            Token::Symbol(s) => f.write_char(*s),
+            Token::Int(i) => f.write_str(&i.to_astring()),
+            Token::Float(n) => f.write_str(&n.to_astring()),
+            Token::Uknown(c) => f.write_char(*c),
         }
     }
 }
 
 /// Specifies alignment options for formatted output.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Alignment {
     /// Left-aligned output (`<`).
+    #[default]
     Left,
     /// Right-aligned output (`>`).
     Right,
     /// Center-aligned output (`^`).
     Center,
-}
-
-impl Default for Alignment {
-    fn default() -> Self {
-        Alignment::Left
-    }
 }
 
 impl Alignment {
@@ -158,7 +158,7 @@ impl<const O: char, const C: char> Template<O, C> {
     pub fn with_parser<P: Parser>(t: &str) -> Result<Self, TemplateError> {
         let mut chars = t.chars().peekable();
 
-        Self::validate_delimiters(&t)?;
+        Self::validate_delimiters(t)?;
 
         let mut literal = String::new();
         let mut alignment = Alignment::default();
@@ -167,14 +167,14 @@ impl<const O: char, const C: char> Template<O, C> {
         while let Some(ch) = chars.next() {
             match ch {
                 c if c == O => {
-                    if let Some(next_ch) = chars.peek() {
-                        if next_ch == &O {
-                            // Double opening character
-                            // Escape sequence
-                            chars.next();
-                            literal.push(O);
-                            continue;
-                        }
+                    if let Some(next_ch) = chars.peek()
+                        && next_ch == &O
+                    {
+                        // Double opening character
+                        // Escape sequence
+                        chars.next();
+                        literal.push(O);
+                        continue;
                     }
 
                     // If a string literal has been accumulated,
@@ -187,7 +187,7 @@ impl<const O: char, const C: char> Template<O, C> {
                     // The text content in-between the delimiters
                     let mut content = String::new();
 
-                    while let Some(next_ch) = chars.next() {
+                    for next_ch in chars.by_ref() {
                         if next_ch == C {
                             break;
                         }
@@ -195,12 +195,12 @@ impl<const O: char, const C: char> Template<O, C> {
                         content.push(next_ch);
                     }
 
-                    if let Some(last_ch) = content.chars().last() {
-                        if let Some(a) = Alignment::from_char(last_ch) {
-                            alignment = a;
-                            // Remove the last character (alignment character) from the string
-                            content = content[..content.len() - last_ch.len_utf8()].to_string();
-                        }
+                    if let Some(last_ch) = content.chars().last()
+                        && let Some(a) = Alignment::from_char(last_ch)
+                    {
+                        alignment = a;
+                        // Remove the last character (alignment character) from the string
+                        content = content[..content.len() - last_ch.len_utf8()].to_string();
                     }
 
                     let tokens = Self::tokenize(&content);
