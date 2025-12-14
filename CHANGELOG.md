@@ -3,3 +3,8 @@
 v1.3.2 - August 14 2025
 
 - Added `Str` variant to the `Value` enum by [dheijl](https://github.com/dheijl)
+
+v1.3.3 - December 14 2025
+
+- Improve performance when using a lot of numeric tokens by [dheijl](https://github.com/dheijl)
+- Implement clippy suggestions by [dheijl](https://github.com/dheijl)
