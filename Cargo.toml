@@ -15,7 +15,6 @@ exclude = [".vscode", ".gitignore", "docs", "CHANGELOG.md"]
 
 [dependencies]
 itoa = "1.0.15"
-smacro = { version = "0.1.0", features = ["map"] }
 ryu = "1.0.20"
 thiserror = "2.0.12"
 
