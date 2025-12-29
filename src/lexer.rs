@@ -1,9 +1,9 @@
-use std::fmt;
+use std::{fmt, rc::Rc};
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum Token {
     /// Identifier token (name of variable used)
-    Ident(String),
+    Ident(Rc<str>),
     Assign,
 
     /// Numbers
@@ -16,9 +16,16 @@ pub enum Token {
     RSquare,
     LCurly,
     RCurly,
+    Colon,
+    Semicolon,
+
+    Question,
+    Pipe,
+    Arrow,
+    Underscore,
 
     /// Verbatim string
-    Literal(String),
+    Literal(Rc<str>),
 
     /// Operators
     Not,
@@ -37,9 +44,22 @@ pub enum Token {
     And,
     Or,
 
-    /// Special
-    End,
     Unknown(char),
+}
+
+impl Token {
+    pub fn as_string(&self) -> Rc<str> {
+        match self {
+            Self::Ident(v) | Self::Literal(v) => Rc::clone(v),
+            Self::Int(v) => Rc::from(v.to_string()),
+            Self::Float(v) => Rc::from(v.to_string()),
+            Self::Colon => Rc::from(":"),
+            Self::Question => Rc::from("?"),
+            Self::Pipe => Rc::from("|"),
+            Self::Arrow => Rc::from("=>"),
+            _ => Rc::from(""),
+        }
+    }
 }
 
 impl fmt::Display for Token {
@@ -56,6 +76,12 @@ impl fmt::Display for Token {
             Self::RSquare => write!(f, "RSquare"),
             Self::LCurly => write!(f, "LCurly"),
             Self::RCurly => write!(f, "RCurly"),
+            Self::Colon => write!(f, "Colon"),
+            Self::Semicolon => write!(f, "Semicolon"),
+            Self::Question => write!(f, "Question"),
+            Self::Pipe => write!(f, "Pipe"),
+            Self::Arrow => write!(f, "Arrow"),
+            Self::Underscore => write!(f, "Underscore"),
             Self::Not => write!(f, "Not"),
             Self::Plus => write!(f, "Plus"),
             Self::Minus => write!(f, "Minus"),
@@ -69,26 +95,14 @@ impl fmt::Display for Token {
             Self::LessThanOrEqual => write!(f, "LessThanOrEqual"),
             Self::And => write!(f, "And"),
             Self::Or => write!(f, "Or"),
-            Self::End => write!(f, "End"),
             Self::Unknown(v) => write!(f, "Unknown({})", v),
         }
     }
 }
 
-#[derive(Default)]
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Alignment {
-    #[default]
-    Left,
-
-    Right,
-
-    Center,
-}
-
 #[derive(Debug, Clone)]
-struct Lexer {
-    input: String,
+pub struct Lexer {
+    input: Vec<char>,
     ch: char,
     cursor: usize,
 }
@@ -96,18 +110,14 @@ struct Lexer {
 impl Lexer {
     const EOF: char = '\0';
 
-    pub fn new(input: &str) -> Self {
-        let input = input.to_string();
-        let ch = input.chars().next().unwrap_or(Self::EOF);
-
-        let mut lexer = Self {
-            input,
+    fn new(input: &str) -> Self {
+        let chars: Vec<char> = input.chars().collect();
+        let ch = chars.first().copied().unwrap_or(Self::EOF);
+        Self {
+            input: chars,
             ch,
             cursor: 0,
-        };
-
-        lexer.advance();
-        lexer
+        }
     }
 
     #[inline]
@@ -117,20 +127,15 @@ impl Lexer {
         }
     }
 
+    #[inline]
     fn advance(&mut self) {
-        if self.cursor >= self.input.len() {
-            self.ch = Self::EOF;
-        } else {
-            // Safe to unwrap, since the length is checked
-            self.ch = self.input.chars().nth(self.cursor).unwrap();
-        }
-
         self.cursor += 1;
+        self.ch = self.input.get(self.cursor).copied().unwrap_or(Self::EOF);
     }
 
     #[inline]
-    fn peek(&mut self) -> Option<char> {
-        self.input.chars().nth(self.cursor)
+    fn peek(&self) -> Option<char> {
+        self.input.get(self.cursor + 1).copied()
     }
 
     /// Reads a string literal, defined
@@ -214,76 +219,96 @@ impl Lexer {
         (output, decimal_point)
     }
 
-    fn next_token(&mut self) -> Token {
+    fn next_token(&mut self) -> Option<Token> {
         self.skip_whitespace();
 
         if self.ch == Self::EOF {
-            return Token::End;
+            return None;
         }
 
         match self.ch {
-            // =, could be ==
+            // =, could be == or =>
             '=' => {
                 if self.peek() == Some('=') {
                     self.advance();
                     self.advance();
 
-                    Token::Equal
+                    Some(Token::Equal)
+                } else if self.peek() == Some('>') {
+                    self.advance();
+                    self.advance();
+
+                    Some(Token::Arrow)
                 } else {
                     self.advance();
 
-                    Token::Assign
+                    Some(Token::Assign)
                 }
             }
 
             '+' => {
                 self.advance();
-                Token::Plus
+                Some(Token::Plus)
             }
 
             '-' => {
                 self.advance();
-                Token::Minus
+                Some(Token::Minus)
             }
 
             '*' => {
                 self.advance();
-                Token::Star
+                Some(Token::Star)
             }
 
             '/' => {
                 self.advance();
-                Token::Slash
+                Some(Token::Slash)
             }
 
             '(' => {
                 self.advance();
-                Token::LParen
+                Some(Token::LParen)
             }
 
             ')' => {
                 self.advance();
-                Token::RParen
+                Some(Token::RParen)
             }
 
             '[' => {
                 self.advance();
-                Token::LSquare
+                Some(Token::LSquare)
             }
 
             ']' => {
                 self.advance();
-                Token::RSquare
+                Some(Token::RSquare)
             }
 
             '{' => {
                 self.advance();
-                Token::LCurly
+                Some(Token::LCurly)
             }
 
             '}' => {
                 self.advance();
-                Token::RCurly
+                Some(Token::RCurly)
+            }
+
+            ':' => {
+                self.advance();
+                Some(Token::Colon)
+            }
+
+            ';' => {
+                self.advance();
+                Some(Token::Semicolon)
+            }
+
+            '?' => {
+                self.advance();
+                Some(Token::Question)
             }
 
             // !, could be !=
@@ -292,11 +317,11 @@ impl Lexer {
                     self.advance();
                     self.advance();
 
-                    Token::NotEqual
+                    Some(Token::NotEqual)
                 } else {
                     self.advance();
 
-                    Token::Not
+                    Some(Token::Not)
                 }
             }
 
@@ -306,11 +331,11 @@ impl Lexer {
                     self.advance();
                     self.advance();
 
-                    Token::LessThanOrEqual
+                    Some(Token::LessThanOrEqual)
                 } else {
                     self.advance();
 
-                    Token::LessThan
+                    Some(Token::LessThan)
                 }
             }
 
@@ -320,11 +345,11 @@ impl Lexer {
                     self.advance();
                     self.advance();
 
-                    Token::GreaterThanOrEqual
+                    Some(Token::GreaterThanOrEqual)
                 } else {
                     self.advance();
 
-                    Token::GreaterThan
+                    Some(Token::GreaterThan)
                 }
             }
 
@@ -335,541 +360,631 @@ impl Lexer {
                     self.advance();
                     self.advance();
 
-                    Token::And
+                    Some(Token::And)
                 } else {
                     self.advance();
 
-                    Token::Unknown('&')
+                    Some(Token::Unknown('&'))
                 }
             }
 
             // |, must be ||
-            // TODO: bitwise or
             '|' => {
                 if self.peek() == Some('|') {
                     self.advance();
                     self.advance();
 
-                    Token::Or
+                    Some(Token::Or)
                 } else {
                     self.advance();
 
-                    Token::Unknown('|')
+                    Some(Token::Pipe)
                 }
             }
 
+            '_' => {
+                self.advance();
+
+                Some(Token::Underscore)
+            }
+
             // Read string literal
-            '"' => Token::Literal(self.read_string()),
+            '"' => Some(Token::Literal(self.read_string().into())),
 
             // Identifier
             c if c.is_ascii_alphabetic() || c == '_' => {
-                return Token::Ident(self.read_ident());
+                return Some(Token::Ident(self.read_ident().into()));
             }
 
             // Number
             c if c.is_ascii_digit() => {
                 let (number, is_float) = self.read_number();
                 return if is_float {
-                    number
-                        .parse::<f64>()
-                        .map(Token::Float)
-                        .unwrap_or(Token::Unknown(c))
+                    Some(
+                        number
+                            .parse::<f64>()
+                            .map(Token::Float)
+                            .unwrap_or(Token::Unknown(c)),
+                    )
                 } else {
-                    number
-                        .parse::<i64>()
-                        .map(Token::Int)
-                        .unwrap_or(Token::Unknown(c))
+                    Some(
+                        number
+                            .parse::<i64>()
+                            .map(Token::Int)
+                            .unwrap_or(Token::Unknown(c)),
+                    )
                 };
             }
 
             c => {
                 self.advance();
-                Token::Unknown(c)
+                Some(Token::Unknown(c))
             }
         }
     }
+
+    #[inline]
+    pub fn tokenize(input: &str) -> Vec<Token> {
+        Self::new(input).collect::<Vec<_>>()
+    }
 }
 
-pub struct Template<const O: char = '{', const C: char = '}'> {
-    alignment: Alignment,
-}
+impl Iterator for Lexer {
+    type Item = Token;
 
-impl<const O: char, const C: char> Template<O, C> {
-    pub fn new<T: AsRef<str>>(input: T) -> Self {
-        Self {
-            alignment: Alignment::default(),
-        }
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_token()
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
+mod lexer_tests {
+    use crate::lexer::{Lexer, Token};
+    use std::rc::Rc;
 
-    // Basic token tests
+    // ==================== Basic Token Tests ====================
+
     #[test]
-    fn test_lexer_int() {
-        let input = "123";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Int(123));
+    fn test_empty_input() {
+        let tokens = Lexer::tokenize("");
+        assert!(tokens.is_empty());
     }
 
     #[test]
-    fn test_lexer_large_int() {
-        let input = "9223372036854775807";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Int(9223372036854775807));
+    fn test_whitespace_only() {
+        let tokens = Lexer::tokenize("   \t\n  ");
+        assert!(tokens.is_empty());
     }
 
     #[test]
-    fn test_lexer_zero() {
-        let input = "0";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Int(0));
+    fn test_single_identifier() {
+        let tokens = Lexer::tokenize("name");
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0], Token::Ident(s) if &**s == "name"));
     }
 
     #[test]
-    fn test_lexer_float() {
-        let input = "123.456";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Float(123.456));
+    fn test_identifier_with_underscore() {
+        let tokens = Lexer::tokenize("first_name");
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0], Token::Ident(s) if &**s == "first_name"));
     }
 
     #[test]
-    fn test_lexer_float_leading_zero() {
-        let input = "0.5";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Float(0.5));
+    fn test_identifier_with_numbers() {
+        let tokens = Lexer::tokenize("var123");
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0], Token::Ident(s) if &**s == "var123"));
     }
 
     #[test]
-    fn test_lexer_ident() {
-        let input = "abc";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Ident("abc".to_string()));
+    fn test_underscore_prefix() {
+        let tokens = Lexer::tokenize("_private");
+        assert_eq!(tokens.len(), 2);
+        assert_eq!(tokens[0], Token::Underscore);
+        assert!(matches!(&tokens[1], Token::Ident(s) if &**s == "private"));
+    }
+
+    // ==================== Number Tests ====================
+
+    #[test]
+    fn test_integer() {
+        let tokens = Lexer::tokenize("42");
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0], Token::Int(42));
     }
 
     #[test]
-    fn test_lexer_ident_with_underscore() {
-        let input = "_private_var";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Ident("_private_var".to_string()));
+    fn test_negative_integer() {
+        let tokens = Lexer::tokenize("-42");
+        assert_eq!(tokens.len(), 2);
+        assert_eq!(tokens[0], Token::Minus);
+        assert_eq!(tokens[1], Token::Int(42));
     }
 
     #[test]
-    fn test_lexer_ident_with_numbers() {
-        let input = "var123";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Ident("var123".to_string()));
+    fn test_zero() {
+        let tokens = Lexer::tokenize("0");
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0], Token::Int(0));
     }
 
     #[test]
-    fn test_lexer_ident_mixed() {
-        let input = "my_var_1";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Ident("my_var_1".to_string()));
-    }
-
-    // String literal tests
-    #[test]
-    fn test_lexer_string() {
-        let input = "\"hello\"";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Literal("hello".to_string()));
+    fn test_large_integer() {
+        let tokens = Lexer::tokenize("9223372036854775807");
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0], Token::Int(i64::MAX));
     }
 
     #[test]
-    fn test_lexer_empty_string() {
-        let input = "\"\"";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Literal("".to_string()));
+    fn test_float() {
+        let tokens = Lexer::tokenize("3.14");
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0], Token::Float(3.14));
     }
 
     #[test]
-    fn test_lexer_string_with_spaces() {
-        let input = "\"hello world\"";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(
-            lexer.next_token(),
-            Token::Literal("hello world".to_string())
-        );
+    fn test_float_leading_zero() {
+        let tokens = Lexer::tokenize("0.5");
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0], Token::Float(0.5));
     }
 
     #[test]
-    fn test_lexer_string_with_escape_newline() {
-        let input = "\"hello\\nworld\"";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(
-            lexer.next_token(),
-            Token::Literal("hello\nworld".to_string())
-        );
+    fn test_float_multiple_digits() {
+        let tokens = Lexer::tokenize("123.456");
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0], Token::Float(123.456));
     }
 
     #[test]
-    fn test_lexer_string_with_escape_tab() {
-        let input = "\"hello\\tworld\"";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(
-            lexer.next_token(),
-            Token::Literal("hello\tworld".to_string())
-        );
+    fn test_number_followed_by_dot_no_digit() {
+        // "42.abc" = 3 tokens: Int(42), Unknown('.'), Ident("abc")
+        // The dot is not consumed as part of the number since no digit follows
+        let tokens = Lexer::tokenize("42.abc");
+        assert_eq!(tokens.len(), 3);
+        assert_eq!(tokens[0], Token::Int(42));
+        assert_eq!(tokens[1], Token::Unknown('.'));
+        assert!(matches!(&tokens[2], Token::Ident(s) if &**s == "abc"));
     }
 
     #[test]
-    fn test_lexer_string_with_escape_return() {
-        let input = "\"hello\\rworld\"";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(
-            lexer.next_token(),
-            Token::Literal("hello\rworld".to_string())
-        );
+    fn test_integer_overflow_becomes_unknown() {
+        let tokens = Lexer::tokenize("99999999999999999999999999999");
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(tokens[0], Token::Unknown(_)));
+    }
+
+    // ==================== String Literal Tests ====================
+
+    #[test]
+    fn test_simple_string() {
+        let tokens = Lexer::tokenize("\"hello\"");
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0], Token::Literal(s) if &**s == "hello"));
     }
 
     #[test]
-    fn test_lexer_string_with_escape_backslash() {
-        let input = "\"hello\\\\world\"";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(
-            lexer.next_token(),
-            Token::Literal("hello\\world".to_string())
-        );
+    fn test_empty_string() {
+        let tokens = Lexer::tokenize("\"\"");
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0], Token::Literal(s) if &**s == ""));
     }
 
     #[test]
-    fn test_lexer_string_with_escape_quote() {
-        let input = "\"hello\\\"world\"";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(
-            lexer.next_token(),
-            Token::Literal("hello\"world".to_string())
-        );
+    fn test_string_with_spaces() {
+        let tokens = Lexer::tokenize("\"hello world\"");
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0], Token::Literal(s) if &**s == "hello world"));
     }
 
     #[test]
-    fn test_lexer_string_with_escape_null() {
-        let input = "\"hello\\0world\"";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(
-            lexer.next_token(),
-            Token::Literal("hello\x00world".to_string())
-        );
+    fn test_string_escape_newline() {
+        let tokens = Lexer::tokenize("\"line1\\nline2\"");
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0], Token::Literal(s) if &**s == "line1\nline2"));
     }
 
     #[test]
-    fn test_lexer_string_with_unknown_escape() {
-        let input = "\"hello\\xworld\"";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(
-            lexer.next_token(),
-            Token::Literal("helloxworld".to_string())
-        );
+    fn test_string_escape_tab() {
+        let tokens = Lexer::tokenize("\"col1\\tcol2\"");
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0], Token::Literal(s) if &**s == "col1\tcol2"));
     }
 
     #[test]
-    fn test_lexer_string_with_multiple_escapes() {
-        let input = "\"line1\\nline2\\tindented\"";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(
-            lexer.next_token(),
-            Token::Literal("line1\nline2\tindented".to_string())
-        );
-    }
-
-    // Operator tests
-    #[test]
-    fn test_lexer_assign() {
-        let input = "=";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Assign);
+    fn test_string_escape_carriage_return() {
+        let tokens = Lexer::tokenize("\"line\\r\"");
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0], Token::Literal(s) if &**s == "line\r"));
     }
 
     #[test]
-    fn test_lexer_not() {
-        let input = "!";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Not);
-    }
-
-    // Comparison operators
-    #[test]
-    fn test_lexer_equal() {
-        let input = "==";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Equal);
+    fn test_string_escape_backslash() {
+        let tokens = Lexer::tokenize("\"path\\\\to\\\\file\"");
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0], Token::Literal(s) if &**s == "path\\to\\file"));
     }
 
     #[test]
-    fn test_lexer_not_equal() {
-        let input = "!=";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::NotEqual);
+    fn test_string_escape_quote() {
+        let tokens = Lexer::tokenize("\"say \\\"hello\\\"\"");
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0], Token::Literal(s) if &**s == "say \"hello\""));
     }
 
     #[test]
-    fn test_lexer_greater_than() {
-        let input = ">";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::GreaterThan);
+    fn test_string_escape_null() {
+        let tokens = Lexer::tokenize("\"null\\0char\"");
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0], Token::Literal(s) if &**s == "null\x00char"));
     }
 
     #[test]
-    fn test_lexer_less_than() {
-        let input = "<";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::LessThan);
+    fn test_string_unknown_escape() {
+        let tokens = Lexer::tokenize("\"\\x\"");
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0], Token::Literal(s) if &**s == "x"));
+    }
+
+    // ==================== Operator Tests ====================
+
+    #[test]
+    fn test_assign() {
+        let tokens = Lexer::tokenize("=");
+        assert_eq!(tokens, vec![Token::Assign]);
     }
 
     #[test]
-    fn test_lexer_greater_than_or_equal() {
-        let input = ">=";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::GreaterThanOrEqual);
+    fn test_equal() {
+        let tokens = Lexer::tokenize("==");
+        assert_eq!(tokens, vec![Token::Equal]);
     }
 
     #[test]
-    fn test_lexer_less_than_or_equal() {
-        let input = "<=";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::LessThanOrEqual);
+    fn test_arrow() {
+        let tokens = Lexer::tokenize("=>");
+        assert_eq!(tokens, vec![Token::Arrow]);
     }
 
     #[test]
-    fn test_lexer_and() {
-        let input = "&&";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::And);
+    fn test_not() {
+        let tokens = Lexer::tokenize("!");
+        assert_eq!(tokens, vec![Token::Not]);
     }
 
     #[test]
-    fn test_lexer_or() {
-        let input = "||";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Or);
+    fn test_not_equal() {
+        let tokens = Lexer::tokenize("!=");
+        assert_eq!(tokens, vec![Token::NotEqual]);
     }
 
     #[test]
-    fn test_lexer_single_ampersand() {
-        let input = "&";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Unknown('&'));
+    fn test_plus() {
+        let tokens = Lexer::tokenize("+");
+        assert_eq!(tokens, vec![Token::Plus]);
     }
 
     #[test]
-    fn test_lexer_single_pipe() {
-        let input = "|";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Unknown('|'));
-    }
-
-    // Whitespace handling
-    #[test]
-    fn test_lexer_whitespace_between_tokens() {
-        let input = "123   456";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Int(123));
-        assert_eq!(lexer.next_token(), Token::Int(456));
+    fn test_minus() {
+        let tokens = Lexer::tokenize("-");
+        assert_eq!(tokens, vec![Token::Minus]);
     }
 
     #[test]
-    fn test_lexer_leading_whitespace() {
-        let input = "   123";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Int(123));
+    fn test_star() {
+        let tokens = Lexer::tokenize("*");
+        assert_eq!(tokens, vec![Token::Star]);
     }
 
     #[test]
-    fn test_lexer_trailing_whitespace() {
-        let input = "123   ";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Int(123));
-        assert_eq!(lexer.next_token(), Token::End);
+    fn test_slash() {
+        let tokens = Lexer::tokenize("/");
+        assert_eq!(tokens, vec![Token::Slash]);
     }
 
     #[test]
-    fn test_lexer_tabs_and_newlines() {
-        let input = "123\t\n456";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Int(123));
-        assert_eq!(lexer.next_token(), Token::Int(456));
-    }
-
-    // Multiple token sequences
-    #[test]
-    fn test_lexer_assignment_expression() {
-        let input = "x = 42";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Ident("x".to_string()));
-        assert_eq!(lexer.next_token(), Token::Assign);
-        assert_eq!(lexer.next_token(), Token::Int(42));
-        assert_eq!(lexer.next_token(), Token::End);
+    fn test_less_than() {
+        let tokens = Lexer::tokenize("<");
+        assert_eq!(tokens, vec![Token::LessThan]);
     }
 
     #[test]
-    fn test_lexer_comparison_expression() {
-        let input = "x == 10";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Ident("x".to_string()));
-        assert_eq!(lexer.next_token(), Token::Equal);
-        assert_eq!(lexer.next_token(), Token::Int(10));
+    fn test_less_than_or_equal() {
+        let tokens = Lexer::tokenize("<=");
+        assert_eq!(tokens, vec![Token::LessThanOrEqual]);
     }
 
     #[test]
-    fn test_lexer_logical_expression() {
-        let input = "x > 5 && y < 10";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Ident("x".to_string()));
-        assert_eq!(lexer.next_token(), Token::GreaterThan);
-        assert_eq!(lexer.next_token(), Token::Int(5));
-        assert_eq!(lexer.next_token(), Token::And);
-        assert_eq!(lexer.next_token(), Token::Ident("y".to_string()));
-        assert_eq!(lexer.next_token(), Token::LessThan);
-        assert_eq!(lexer.next_token(), Token::Int(10));
+    fn test_greater_than() {
+        let tokens = Lexer::tokenize(">");
+        assert_eq!(tokens, vec![Token::GreaterThan]);
     }
 
     #[test]
-    fn test_lexer_complex_expression() {
-        let input = "result = (x != 0) || (y >= 100)";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Ident("result".to_string()));
-        assert_eq!(lexer.next_token(), Token::Assign);
-        assert_eq!(lexer.next_token(), Token::LParen);
-        assert_eq!(lexer.next_token(), Token::Ident("x".to_string()));
-        assert_eq!(lexer.next_token(), Token::NotEqual);
-        assert_eq!(lexer.next_token(), Token::Int(0));
-        assert_eq!(lexer.next_token(), Token::RParen);
-        assert_eq!(lexer.next_token(), Token::Or);
-        assert_eq!(lexer.next_token(), Token::LParen);
-        assert_eq!(lexer.next_token(), Token::Ident("y".to_string()));
-        assert_eq!(lexer.next_token(), Token::GreaterThanOrEqual);
-        assert_eq!(lexer.next_token(), Token::Int(100));
-        assert_eq!(lexer.next_token(), Token::RParen);
+    fn test_greater_than_or_equal() {
+        let tokens = Lexer::tokenize(">=");
+        assert_eq!(tokens, vec![Token::GreaterThanOrEqual]);
     }
 
     #[test]
-    fn test_lexer_string_assignment() {
-        let input = "name = \"John Doe\"";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Ident("name".to_string()));
-        assert_eq!(lexer.next_token(), Token::Assign);
-        assert_eq!(lexer.next_token(), Token::Literal("John Doe".to_string()));
+    fn test_and() {
+        let tokens = Lexer::tokenize("&&");
+        assert_eq!(tokens, vec![Token::And]);
     }
 
     #[test]
-    fn test_lexer_mixed_types() {
-        let input = "x = 42 y = 3.14 z = \"test\"";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Ident("x".to_string()));
-        assert_eq!(lexer.next_token(), Token::Assign);
-        assert_eq!(lexer.next_token(), Token::Int(42));
-        assert_eq!(lexer.next_token(), Token::Ident("y".to_string()));
-        assert_eq!(lexer.next_token(), Token::Assign);
-        assert_eq!(lexer.next_token(), Token::Float(3.14));
-        assert_eq!(lexer.next_token(), Token::Ident("z".to_string()));
-        assert_eq!(lexer.next_token(), Token::Assign);
-        assert_eq!(lexer.next_token(), Token::Literal("test".to_string()));
-    }
-
-    // Edge cases
-    #[test]
-    fn test_lexer_empty_input() {
-        let input = "";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::End);
+    fn test_single_ampersand_unknown() {
+        let tokens = Lexer::tokenize("&");
+        assert_eq!(tokens, vec![Token::Unknown('&')]);
     }
 
     #[test]
-    fn test_lexer_only_whitespace() {
-        let input = "   \t\n  ";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::End);
+    fn test_or() {
+        let tokens = Lexer::tokenize("||");
+        assert_eq!(tokens, vec![Token::Or]);
     }
 
     #[test]
-    fn test_lexer_unknown_characters() {
-        let input = "@#$%";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Unknown('@'));
-        assert_eq!(lexer.next_token(), Token::Unknown('#'));
-        assert_eq!(lexer.next_token(), Token::Unknown('$'));
-        assert_eq!(lexer.next_token(), Token::Unknown('%'));
+    fn test_pipe() {
+        let tokens = Lexer::tokenize("|");
+        assert_eq!(tokens, vec![Token::Pipe]);
+    }
+
+    // ==================== Delimiter Tests ====================
+
+    #[test]
+    fn test_lparen() {
+        let tokens = Lexer::tokenize("(");
+        assert_eq!(tokens, vec![Token::LParen]);
     }
 
     #[test]
-    fn test_lexer_no_space_between_tokens() {
-        let input = "x=42";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Ident("x".to_string()));
-        assert_eq!(lexer.next_token(), Token::Assign);
-        assert_eq!(lexer.next_token(), Token::Int(42));
+    fn test_rparen() {
+        let tokens = Lexer::tokenize(")");
+        assert_eq!(tokens, vec![Token::RParen]);
     }
 
     #[test]
-    fn test_lexer_consecutive_operators() {
-        let input = "==!=>=<=";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Equal);
-        assert_eq!(lexer.next_token(), Token::NotEqual);
-        assert_eq!(lexer.next_token(), Token::GreaterThanOrEqual);
-        assert_eq!(lexer.next_token(), Token::LessThanOrEqual);
+    fn test_lsquare() {
+        let tokens = Lexer::tokenize("[");
+        assert_eq!(tokens, vec![Token::LSquare]);
     }
 
     #[test]
-    fn test_lexer_number_followed_by_ident() {
-        let input = "123abc";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Int(123));
-        assert_eq!(lexer.next_token(), Token::Ident("abc".to_string()));
+    fn test_rsquare() {
+        let tokens = Lexer::tokenize("]");
+        assert_eq!(tokens, vec![Token::RSquare]);
     }
 
     #[test]
-    fn test_lexer_decimal_without_trailing_digit() {
-        let input = "123.";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Int(123));
-        assert_eq!(lexer.next_token(), Token::Unknown('.'));
+    fn test_lcurly() {
+        let tokens = Lexer::tokenize("{");
+        assert_eq!(tokens, vec![Token::LCurly]);
     }
 
     #[test]
-    fn test_lexer_multiple_decimals() {
-        let input = "123.456.789";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Float(123.456));
-        assert_eq!(lexer.next_token(), Token::Unknown('.'));
-        assert_eq!(lexer.next_token(), Token::Int(789));
+    fn test_rcurly() {
+        let tokens = Lexer::tokenize("}");
+        assert_eq!(tokens, vec![Token::RCurly]);
     }
 
     #[test]
-    fn test_lexer_end_token_repeated() {
-        let input = "";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::End);
-        assert_eq!(lexer.next_token(), Token::End);
-        assert_eq!(lexer.next_token(), Token::End);
+    fn test_colon() {
+        let tokens = Lexer::tokenize(":");
+        assert_eq!(tokens, vec![Token::Colon]);
     }
 
     #[test]
-    fn test_lexer_all_comparison_operators() {
-        let input = "< > <= >= == !=";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::LessThan);
-        assert_eq!(lexer.next_token(), Token::GreaterThan);
-        assert_eq!(lexer.next_token(), Token::LessThanOrEqual);
-        assert_eq!(lexer.next_token(), Token::GreaterThanOrEqual);
-        assert_eq!(lexer.next_token(), Token::Equal);
-        assert_eq!(lexer.next_token(), Token::NotEqual);
+    fn test_semicolon() {
+        let tokens = Lexer::tokenize(";");
+        assert_eq!(tokens, vec![Token::Semicolon]);
     }
 
     #[test]
-    fn test_lexer_underscore_only_ident() {
-        let input = "_";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Ident("_".to_string()));
+    fn test_question() {
+        let tokens = Lexer::tokenize("?");
+        assert_eq!(tokens, vec![Token::Question]);
     }
 
     #[test]
-    fn test_lexer_multiple_underscores() {
-        let input = "___test___";
-        let mut lexer = Lexer::new(input);
-        assert_eq!(lexer.next_token(), Token::Ident("___test___".to_string()));
+    fn test_underscore() {
+        let tokens = Lexer::tokenize("_");
+        assert_eq!(tokens, vec![Token::Underscore]);
+    }
+
+    // ==================== Complex Expression Tests ====================
+
+    #[test]
+    fn test_repeat_pattern() {
+        let tokens = Lexer::tokenize("pattern : 5");
+        assert_eq!(tokens.len(), 3);
+        assert!(matches!(&tokens[0], Token::Ident(s) if &**s == "pattern"));
+        assert_eq!(tokens[1], Token::Colon);
+        assert_eq!(tokens[2], Token::Int(5));
+    }
+
+    #[test]
+    fn test_conditional_pattern() {
+        let tokens = Lexer::tokenize("cond ? yes : no");
+        assert_eq!(tokens.len(), 5);
+        assert!(matches!(&tokens[0], Token::Ident(s) if &**s == "cond"));
+        assert_eq!(tokens[1], Token::Question);
+        assert!(matches!(&tokens[2], Token::Ident(s) if &**s == "yes"));
+        assert_eq!(tokens[3], Token::Colon);
+        assert!(matches!(&tokens[4], Token::Ident(s) if &**s == "no"));
+    }
+
+    #[test]
+    fn test_switch_pattern() {
+        let tokens = Lexer::tokenize("val | a => x | b => y | _ => z");
+        assert_eq!(tokens.len(), 13);
+        assert!(matches!(&tokens[0], Token::Ident(s) if &**s == "val"));
+        assert_eq!(tokens[1], Token::Pipe);
+        assert!(matches!(&tokens[2], Token::Ident(s) if &**s == "a"));
+        assert_eq!(tokens[3], Token::Arrow);
+    }
+
+    #[test]
+    fn test_arithmetic_expression() {
+        let tokens = Lexer::tokenize("a + b * c - d / e");
+        assert_eq!(tokens.len(), 9);
+        assert!(matches!(&tokens[0], Token::Ident(_)));
+        assert_eq!(tokens[1], Token::Plus);
+        assert!(matches!(&tokens[2], Token::Ident(_)));
+        assert_eq!(tokens[3], Token::Star);
+    }
+
+    #[test]
+    fn test_comparison_chain() {
+        let tokens = Lexer::tokenize("a < b && c > d || e == f");
+        assert_eq!(tokens.len(), 11);
+    }
+
+    #[test]
+    fn test_nested_parens() {
+        let tokens = Lexer::tokenize("((a + b) * c)");
+        let expected = vec![
+            Token::LParen,
+            Token::LParen,
+            Token::Ident(Rc::from("a")),
+            Token::Plus,
+            Token::Ident(Rc::from("b")),
+            Token::RParen,
+            Token::Star,
+            Token::Ident(Rc::from("c")),
+            Token::RParen,
+        ];
+        assert_eq!(tokens, expected);
+    }
+
+    #[test]
+    fn test_mixed_brackets() {
+        let tokens = Lexer::tokenize("arr[0]{key}(fn)");
+
+        assert_eq!(tokens.len(), 10);
+        assert_eq!(tokens[1], Token::LSquare);
+        assert_eq!(tokens[3], Token::RSquare);
+        assert_eq!(tokens[4], Token::LCurly);
+        assert_eq!(tokens[6], Token::RCurly);
+        assert_eq!(tokens[7], Token::LParen);
+        assert_eq!(tokens[9], Token::RParen);
+    }
+
+    // ==================== Whitespace Handling Tests ====================
+
+    #[test]
+    fn test_multiple_spaces() {
+        let tokens = Lexer::tokenize("a    b");
+        assert_eq!(tokens.len(), 2);
+    }
+
+    #[test]
+    fn test_tabs_between_tokens() {
+        let tokens = Lexer::tokenize("a\t\tb");
+        assert_eq!(tokens.len(), 2);
+    }
+
+    #[test]
+    fn test_newlines_between_tokens() {
+        let tokens = Lexer::tokenize("a\n\nb");
+        assert_eq!(tokens.len(), 2);
+    }
+
+    #[test]
+    fn test_mixed_whitespace() {
+        let tokens = Lexer::tokenize("  a \t\n  b  \n");
+        assert_eq!(tokens.len(), 2);
+    }
+
+    // ==================== Unknown Character Tests ====================
+
+    #[test]
+    fn test_unknown_tilde() {
+        let tokens = Lexer::tokenize("~");
+        assert_eq!(tokens, vec![Token::Unknown('~')]);
+    }
+
+    #[test]
+    fn test_unknown_at() {
+        let tokens = Lexer::tokenize("@");
+        assert_eq!(tokens, vec![Token::Unknown('@')]);
+    }
+
+    #[test]
+    fn test_unknown_hash() {
+        let tokens = Lexer::tokenize("#");
+        assert_eq!(tokens, vec![Token::Unknown('#')]);
+    }
+
+    #[test]
+    fn test_unknown_backtick() {
+        let tokens = Lexer::tokenize("`");
+        assert_eq!(tokens, vec![Token::Unknown('`')]);
+    }
+
+    // ==================== Token Display Tests ====================
+
+    #[test]
+    fn test_token_display() {
+        assert_eq!(format!("{}", Token::Assign), "Assign");
+        assert_eq!(format!("{}", Token::Plus), "Plus");
+        assert_eq!(format!("{}", Token::Int(42)), "42");
+        assert_eq!(format!("{}", Token::Float(3.14)), "3.14");
+        assert_eq!(format!("{}", Token::Ident(Rc::from("foo"))), "foo");
+        assert_eq!(format!("{}", Token::Unknown('?')), "Unknown(?)");
+    }
+
+    // ==================== Token as_string Tests ====================
+
+    #[test]
+    fn test_token_as_string_ident() {
+        let token = Token::Ident(Rc::from("myvar"));
+        assert_eq!(&*token.as_string(), "myvar");
+    }
+
+    #[test]
+    fn test_token_as_string_literal() {
+        let token = Token::Literal(Rc::from("hello"));
+        assert_eq!(&*token.as_string(), "hello");
+    }
+
+    #[test]
+    fn test_token_as_string_int() {
+        let token = Token::Int(123);
+        assert_eq!(&*token.as_string(), "123");
+    }
+
+    #[test]
+    fn test_token_as_string_float() {
+        let token = Token::Float(3.5);
+        assert_eq!(&*token.as_string(), "3.5");
+    }
+
+    #[test]
+    fn test_token_as_string_colon() {
+        assert_eq!(&*Token::Colon.as_string(), ":");
+    }
+
+    #[test]
+    fn test_token_as_string_question() {
+        assert_eq!(&*Token::Question.as_string(), "?");
+    }
+
+    #[test]
+    fn test_token_as_string_pipe() {
+        assert_eq!(&*Token::Pipe.as_string(), "|");
+    }
+
+    #[test]
+    fn test_token_as_string_arrow() {
+        assert_eq!(&*Token::Arrow.as_string(), "=>");
+    }
+
+    #[test]
+    fn test_token_as_string_other_returns_empty() {
+        assert_eq!(&*Token::Plus.as_string(), "");
+        assert_eq!(&*Token::Minus.as_string(), "");
+        assert_eq!(&*Token::LParen.as_string(), "");
     }
 }

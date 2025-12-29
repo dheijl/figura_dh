@@ -16,7 +16,6 @@ exclude = [".vscode", ".gitignore", "docs", "CHANGELOG.md"]
 [dependencies]
 itoa = "1.0.15"
 ryu = "1.0.20"
-thiserror = "2.0.12"
 
 [lib]
 doctest = false
