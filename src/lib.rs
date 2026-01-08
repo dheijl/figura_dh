@@ -4,6 +4,7 @@ mod directive;
 mod err;
 mod lexer;
 mod parser;
+mod traits;
 
 use std::{collections::HashMap, fmt};
 
@@ -12,6 +13,7 @@ pub use crate::directive::*;
 pub use crate::err::TemplateError;
 pub use crate::lexer::{Lexer, Token};
 pub use crate::parser::*;
+use crate::traits::ToAstring;
 
 // A Value type used in templating contexts.
 #[derive(Debug)]
@@ -37,11 +39,11 @@ pub enum Value {
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::String(v) => write!(f, "{}", v),
-            Self::Str(v) => write!(f, "{}", v),
-            Self::Int(v) => write!(f, "{}", v),
-            Self::Float(v) => write!(f, "{}", v),
-            Self::Bool(v) => write!(f, "{}", v),
+            Self::String(v) => f.write_str(v),
+            Self::Str(v) => f.write_str(v),
+            Self::Int(v) => f.write_str(&v.to_astring()),
+            Self::Float(v) => f.write_str(&v.to_astring()),
+            Self::Bool(v) => f.write_str(&v.to_string()),
         }
     }
 }
@@ -113,7 +115,6 @@ impl<const O: char, const C: char> Template<O, C> {
     }
 
     pub fn with_parser<P: Parser>(input: &str) -> Result<Self, TemplateError> {
-        let input = input.as_ref();
         let depth = Self::validate(input);
 
         match depth {

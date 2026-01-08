@@ -107,31 +107,34 @@ impl Parser for DefaultParser {
         }
 
         // Repeat: pattern : count
-        if input.len() == 3 && input[1] == Token::Colon {
-            if Self::is_value_token(&input[0]) && Self::is_value_token(&input[2]) {
-                return Ok(Box::new(RepeatDirective(
-                    input[0].as_string(),
-                    input[2].as_string(),
-                )));
-            }
+        if input.len() == 3
+            && input[1] == Token::Colon
+            && Self::is_value_token(&input[0])
+            && Self::is_value_token(&input[2])
+        {
+            return Ok(Box::new(RepeatDirective(
+                input[0].as_string(),
+                input[2].as_string(),
+            )));
         }
 
         // Conditional: condition ? then : else
-        if input.len() == 5 && input[1] == Token::Question && input[3] == Token::Colon {
-            if Self::is_value_token(&input[0])
-                && Self::is_value_token(&input[2])
-                && Self::is_value_token(&input[4])
-            {
-                return Ok(Box::new(ConditionalDirective::new(
-                    input[0].as_string(),
-                    input[2].as_string(),
-                    input[4].as_string(),
-                )));
-            }
+        if input.len() == 5
+            && input[1] == Token::Question
+            && input[3] == Token::Colon
+            && Self::is_value_token(&input[0])
+            && Self::is_value_token(&input[2])
+            && Self::is_value_token(&input[4])
+        {
+            return Ok(Box::new(ConditionalDirective::new(
+                input[0].as_string(),
+                input[2].as_string(),
+                input[4].as_string(),
+            )));
         }
 
         // Switch: value | case => result | ...
-        if input.len() >= 4 && input.iter().any(|t| *t == Token::Pipe) {
+        if input.len() >= 4 && input.contains(&Token::Pipe) {
             return Self::parse_switch(input);
         }
 

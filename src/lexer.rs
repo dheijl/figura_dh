@@ -1,5 +1,7 @@
 use std::{fmt, rc::Rc};
 
+use crate::traits::ToAstring;
+
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum Token {
     /// Identifier token (name of variable used)
@@ -65,36 +67,36 @@ impl Token {
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Ident(v) => write!(f, "{}", v),
-            Self::Assign => write!(f, "Assign"),
-            Self::Int(v) => write!(f, "{}", v),
-            Self::Float(v) => write!(f, "{}", v),
-            Self::Literal(v) => write!(f, "{}", v),
-            Self::LParen => write!(f, "LParen"),
-            Self::RParen => write!(f, "RParen"),
-            Self::LSquare => write!(f, "LSquare"),
-            Self::RSquare => write!(f, "RSquare"),
-            Self::LCurly => write!(f, "LCurly"),
-            Self::RCurly => write!(f, "RCurly"),
-            Self::Colon => write!(f, "Colon"),
-            Self::Semicolon => write!(f, "Semicolon"),
-            Self::Question => write!(f, "Question"),
-            Self::Pipe => write!(f, "Pipe"),
-            Self::Arrow => write!(f, "Arrow"),
-            Self::Underscore => write!(f, "Underscore"),
-            Self::Not => write!(f, "Not"),
-            Self::Plus => write!(f, "Plus"),
-            Self::Minus => write!(f, "Minus"),
-            Self::Star => write!(f, "Star"),
-            Self::Slash => write!(f, "Slash"),
-            Self::Equal => write!(f, "Equal"),
-            Self::NotEqual => write!(f, "NotEqual"),
-            Self::GreaterThan => write!(f, "GreaterThan"),
-            Self::LessThan => write!(f, "LessThan"),
-            Self::GreaterThanOrEqual => write!(f, "GreaterThanOrEqual"),
-            Self::LessThanOrEqual => write!(f, "LessThanOrEqual"),
-            Self::And => write!(f, "And"),
-            Self::Or => write!(f, "Or"),
+            Self::Ident(v) => f.write_str(v),
+            Self::Assign => f.write_str("Assign"),
+            Self::Int(v) => f.write_str(&v.to_astring()),
+            Self::Float(v) => f.write_str(&v.to_astring()),
+            Self::Literal(v) => f.write_str(v),
+            Self::LParen => f.write_str("LParen"),
+            Self::RParen => f.write_str("RParen"),
+            Self::LSquare => f.write_str("LSquare"),
+            Self::RSquare => f.write_str("RSquare"),
+            Self::LCurly => f.write_str("LCurly"),
+            Self::RCurly => f.write_str("RCurly"),
+            Self::Colon => f.write_str("Colon"),
+            Self::Semicolon => f.write_str("Semicolon"),
+            Self::Question => f.write_str("Question"),
+            Self::Pipe => f.write_str("Pipe"),
+            Self::Arrow => f.write_str("Arrow"),
+            Self::Underscore => f.write_str("Underscore"),
+            Self::Not => f.write_str("Not"),
+            Self::Plus => f.write_str("Plus"),
+            Self::Minus => f.write_str("Minus"),
+            Self::Star => f.write_str("Star"),
+            Self::Slash => f.write_str("Slash"),
+            Self::Equal => f.write_str("Equal"),
+            Self::NotEqual => f.write_str("NotEqual"),
+            Self::GreaterThan => f.write_str("GreaterThan"),
+            Self::LessThan => f.write_str("LessThan"),
+            Self::GreaterThanOrEqual => f.write_str("GreaterThanOrEqual"),
+            Self::LessThanOrEqual => f.write_str("LessThanOrEqual"),
+            Self::And => f.write_str("And"),
+            Self::Or => f.write_str("Or"),
             Self::Unknown(v) => write!(f, "Unknown({})", v),
         }
     }
@@ -177,7 +179,7 @@ impl Lexer {
         // TODO: Handle  EOF
         self.advance();
 
-        return output;
+        output
     }
 
     /// Reads a sequence of characters that is not a string literal.
@@ -204,9 +206,7 @@ impl Lexer {
         let mut decimal_point = false;
 
         while self.ch.is_ascii_digit()
-            || (self.ch == '.'
-                && !decimal_point
-                && self.peek().map_or(false, |c| c.is_ascii_digit()))
+            || (self.ch == '.' && !decimal_point && self.peek().is_some_and(|c| c.is_ascii_digit()))
         {
             if self.ch == '.' {
                 decimal_point = true;
@@ -393,13 +393,13 @@ impl Lexer {
 
             // Identifier
             c if c.is_ascii_alphabetic() || c == '_' => {
-                return Some(Token::Ident(self.read_ident().into()));
+                Some(Token::Ident(self.read_ident().into()))
             }
 
             // Number
             c if c.is_ascii_digit() => {
                 let (number, is_float) = self.read_number();
-                return if is_float {
+                if is_float {
                     Some(
                         number
                             .parse::<f64>()
@@ -413,7 +413,7 @@ impl Lexer {
                             .map(Token::Int)
                             .unwrap_or(Token::Unknown(c)),
                     )
-                };
+                }
             }
 
             c => {
