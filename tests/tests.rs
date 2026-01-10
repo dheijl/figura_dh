@@ -416,7 +416,7 @@ mod integration_tests {
 
         let template = "[{zero_int}][{zero_float}][{empty_string}][{false_bool}]";
         let result = format_template(template, &ctx).unwrap();
-        assert_eq!(result, "[0][0][][false]");
+        assert_eq!(result, "[0][0.0][][false]");
     }
 
     #[test]

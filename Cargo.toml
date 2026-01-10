@@ -14,9 +14,9 @@ keywords = ["string", "format", "template"]
 exclude = [".vscode", ".gitignore", "docs", "CHANGELOG.md"]
 
 [dependencies]
-itoa = "1.0.15"
+itoa = "1.0.17"
 #ryu = "1.0.20"
-zmij = "1.0.9"
+zmij = "1.0.12"
 
 [lib]
 doctest = false
