@@ -1,12 +1,11 @@
-use std::{fmt, rc::Rc};
+use core::mem;
+use std::{iter::Peekable, rc::Rc, str::Chars};
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum Token {
-    /// Identifier token (name of variable used)
     Ident(Rc<str>),
     Assign,
 
-    /// Numbers
     Int(i64),
     Float(f64),
 
@@ -21,415 +20,249 @@ pub enum Token {
 
     Question,
     Pipe,
-    Arrow,
     Underscore,
 
     /// Verbatim string
     Literal(Rc<str>),
 
-    /// Operators
+    // Operations
     Not,
     Plus,
     Minus,
     Star,
     Slash,
 
-    /// Comparison
-    Equal,
-    NotEqual,
+    // Comparison
+    Equals,
+    NotEquals,
     GreaterThan,
+    GreaterThanEquals,
     LessThan,
-    GreaterThanOrEqual,
-    LessThanOrEqual,
+    LessThanEquals,
     And,
     Or,
+
+    // Special
+    Arrow,
 
     Unknown(char),
 }
 
 impl Token {
-    pub fn as_string(&self) -> Rc<str> {
-        match self {
-            Self::Ident(v) | Self::Literal(v) => Rc::clone(v),
-            Self::Int(v) => Rc::from(v.to_string()),
-            Self::Float(v) => Rc::from(v.to_string()),
-            Self::Colon => Rc::from(":"),
-            Self::Question => Rc::from("?"),
-            Self::Pipe => Rc::from("|"),
-            Self::Arrow => Rc::from("=>"),
-            _ => Rc::from(""),
-        }
-    }
-}
-
-impl fmt::Display for Token {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Ident(v) => write!(f, "{}", v),
-            Self::Assign => write!(f, "Assign"),
-            Self::Int(v) => write!(f, "{}", v),
-            Self::Float(v) => write!(f, "{}", v),
-            Self::Literal(v) => write!(f, "{}", v),
-            Self::LParen => write!(f, "LParen"),
-            Self::RParen => write!(f, "RParen"),
-            Self::LSquare => write!(f, "LSquare"),
-            Self::RSquare => write!(f, "RSquare"),
-            Self::LCurly => write!(f, "LCurly"),
-            Self::RCurly => write!(f, "RCurly"),
-            Self::Colon => write!(f, "Colon"),
-            Self::Semicolon => write!(f, "Semicolon"),
-            Self::Question => write!(f, "Question"),
-            Self::Pipe => write!(f, "Pipe"),
-            Self::Arrow => write!(f, "Arrow"),
-            Self::Underscore => write!(f, "Underscore"),
-            Self::Not => write!(f, "Not"),
-            Self::Plus => write!(f, "Plus"),
-            Self::Minus => write!(f, "Minus"),
-            Self::Star => write!(f, "Star"),
-            Self::Slash => write!(f, "Slash"),
-            Self::Equal => write!(f, "Equal"),
-            Self::NotEqual => write!(f, "NotEqual"),
-            Self::GreaterThan => write!(f, "GreaterThan"),
-            Self::LessThan => write!(f, "LessThan"),
-            Self::GreaterThanOrEqual => write!(f, "GreaterThanOrEqual"),
-            Self::LessThanOrEqual => write!(f, "LessThanOrEqual"),
-            Self::And => write!(f, "And"),
-            Self::Or => write!(f, "Or"),
-            Self::Unknown(v) => write!(f, "Unknown({})", v),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Lexer {
-    input: Vec<char>,
-    ch: char,
-    cursor: usize,
-}
-
-impl Lexer {
     const EOF: char = '\0';
 
-    fn new(input: &str) -> Self {
-        let chars: Vec<char> = input.chars().collect();
-        let ch = chars.first().copied().unwrap_or(Self::EOF);
-        Self {
-            input: chars,
-            ch,
-            cursor: 0,
+    /// Check if a character can form a multi-character token
+    #[inline]
+    fn try_double_char(first: char, second: char) -> Option<Token> {
+        match (first, second) {
+            ('=', '=') => Some(Token::Equals),
+            ('-', '>') => Some(Token::Arrow),
+            ('!', '=') => Some(Token::NotEquals),
+            ('<', '=') => Some(Token::LessThanEquals),
+            ('>', '=') => Some(Token::GreaterThanEquals),
+            ('&', '&') => Some(Token::And),
+            ('|', '|') => Some(Token::Or),
+
+            _ => None,
         }
+    }
+
+    #[inline]
+    fn try_single_char(ch: char) -> Option<Token> {
+        match ch {
+            '=' => Some(Token::Assign),
+            '(' => Some(Token::LParen),
+            ')' => Some(Token::RParen),
+            '[' => Some(Token::LSquare),
+            ']' => Some(Token::RSquare),
+            '{' => Some(Token::LCurly),
+            '}' => Some(Token::RCurly),
+            ':' => Some(Token::Colon),
+            ';' => Some(Token::Semicolon),
+            '?' => Some(Token::Question),
+            '|' => Some(Token::Pipe),
+            '!' => Some(Token::Not),
+            '+' => Some(Token::Plus),
+            '-' => Some(Token::Minus),
+            '*' => Some(Token::Star),
+            '/' => Some(Token::Slash),
+            '>' => Some(Token::GreaterThan),
+            '<' => Some(Token::LessThan),
+
+            _ => None,
+        }
+    }
+}
+
+struct TemplateLexer<'a> {
+    input: Peekable<Chars<'a>>,
+}
+
+impl<'a> TemplateLexer<'a> {
+    fn new(input: &'a str) -> Self {
+        Self {
+            input: input.chars().peekable(),
+        }
+    }
+
+    #[inline]
+    fn advance(&mut self) -> Option<char> {
+        self.input.next()
+    }
+
+    #[inline]
+    fn peek(&mut self) -> Option<&char> {
+        self.input.peek()
     }
 
     #[inline]
     fn skip_whitespace(&mut self) {
-        while self.ch.is_whitespace() {
+        while let Some(&ch) = self.peek() {
+            if !ch.is_whitespace() {
+                break;
+            }
+
             self.advance();
         }
     }
 
-    #[inline]
-    fn advance(&mut self) {
-        self.cursor += 1;
-        self.ch = self.input.get(self.cursor).copied().unwrap_or(Self::EOF);
-    }
-
-    #[inline]
-    fn peek(&self) -> Option<char> {
-        self.input.get(self.cursor + 1).copied()
-    }
-
-    /// Reads a string literal, defined
-    /// by encapsulating quotes
-    ///
-    /// E.G "Hello, world!" -> Literal(String(Hello, world!))
-    fn read_string(&mut self) -> String {
+    fn read_literal(&mut self) -> Rc<str> {
         let mut output = String::new();
 
-        // Skip opening quote
-        self.advance();
+        while let Some(ch) = self.advance() {
+            match ch {
+                '"' => break,
 
-        while self.ch != '"' && self.ch != Self::EOF {
-            // Handle \
-            if self.ch == '\\' {
-                // Skip it
-                self.advance();
+                '\\' => match self.advance() {
+                    Some('n') => output.push('\n'),
+                    Some('t') => output.push('\t'),
+                    Some('r') => output.push('\r'),
+                    Some('\\') => output.push('\\'),
+                    Some('"') => output.push('"'),
+                    Some('0') => output.push('\0'),
+                    Some(c) => output.push(c),
+                    None => break,
+                },
 
-                match self.ch {
-                    'n' => output.push('\n'),
-                    't' => output.push('\t'),
-                    'r' => output.push('\r'),
-                    '\\' => output.push('\\'),
-                    '"' => output.push('"'),
-                    '0' => output.push('\x00'),
+                c => output.push(c),
+            }
+        }
 
-                    // If unknown, include it verbatim
-                    _ => output.push(self.ch),
-                }
+        Rc::from(output)
+    }
 
-                self.advance();
+    fn read_ident(&mut self, first: char) -> Rc<str> {
+        let mut output = String::from(first);
+
+        while let Some(&ch) = self.peek() {
+            if ch.is_ascii_alphabetic() || ch.is_ascii_digit() || ch == '_' {
+                output.push(self.advance().unwrap());
             } else {
-                output.push(self.ch);
+                break;
+            }
+        }
+
+        Rc::from(output)
+    }
+
+    fn read_number(&mut self, first: char) -> Token {
+        let mut output = String::from(first);
+        let mut is_float = false;
+
+        while let Some(&ch) = self.peek() {
+            if ch.is_ascii_digit() {
+                output.push(self.advance().unwrap());
+            } else {
+                break;
+            }
+        }
+
+        if let Some(&'.') = self.peek() {
+            let mut iter_clone = self.input.clone();
+
+            iter_clone.next();
+
+            if let Some(next_ch) = iter_clone.next() {
+                if next_ch.is_ascii_digit() {
+                    is_float = true;
+
+                    output.push(self.advance().unwrap());
+
+                    while let Some(&ch) = self.peek() {
+                        if ch.is_ascii_digit() {
+                            output.push(self.advance().unwrap());
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        if is_float {
+            output
+                .parse::<f64>()
+                .map(Token::Float)
+                .unwrap_or(Token::Unknown(first))
+        } else {
+            output
+                .parse::<i64>()
+                .map(Token::Int)
+                .unwrap_or(Token::Unknown(first))
+        }
+    }
+    fn check_double(&mut self, expected: char, matched: Token, unmatched: Token) -> Token {
+        if let Some(&ch) = self.peek() {
+            if ch == expected {
                 self.advance();
+                return matched;
             }
         }
-
-        // `self.ch` here is  '"', skip it
-        // TODO: Handle  EOF
-        self.advance();
-
-        return output;
-    }
-
-    /// Reads a sequence of characters that is not a string literal.
-    ///
-    /// NOTE: This sequence of characters doesnt start with a digit.
-    fn read_ident(&mut self) -> String {
-        let mut output = String::new();
-
-        while self.ch.is_ascii_alphabetic() || self.ch.is_ascii_digit() || self.ch == '_' {
-            output.push(self.ch);
-            self.advance();
-        }
-
-        output
-    }
-
-    /// Reads a sequence of digits (or .)
-    /// And returns the literal string of it
-    ///
-    /// The lexer then shall see if the output is integer or float
-    /// because the function returns a tuple of the literal string and a boolean indicating if it is a float
-    fn read_number(&mut self) -> (String, bool) {
-        let mut output = String::new();
-        let mut decimal_point = false;
-
-        while self.ch.is_ascii_digit()
-            || (self.ch == '.'
-                && !decimal_point
-                && self.peek().map_or(false, |c| c.is_ascii_digit()))
-        {
-            if self.ch == '.' {
-                decimal_point = true;
-            }
-
-            output.push(self.ch);
-            self.advance();
-        }
-
-        (output, decimal_point)
+        unmatched
     }
 
     fn next_token(&mut self) -> Option<Token> {
         self.skip_whitespace();
-
-        if self.ch == Self::EOF {
-            return None;
-        }
-
-        match self.ch {
-            // =, could be == or =>
-            '=' => {
-                if self.peek() == Some('=') {
-                    self.advance();
-                    self.advance();
-
-                    Some(Token::Equal)
-                } else if self.peek() == Some('>') {
-                    self.advance();
-                    self.advance();
-
-                    Some(Token::Arrow)
-                } else {
-                    self.advance();
-
-                    Some(Token::Assign)
-                }
-            }
-
-            '+' => {
-                self.advance();
-                Some(Token::Plus)
-            }
-
-            '-' => {
-                self.advance();
-                Some(Token::Minus)
-            }
-
-            '*' => {
-                self.advance();
-                Some(Token::Star)
-            }
-
-            '/' => {
-                self.advance();
-                Some(Token::Slash)
-            }
-
-            '(' => {
-                self.advance();
-                Some(Token::LParen)
-            }
-
-            ')' => {
-                self.advance();
-                Some(Token::RParen)
-            }
-
-            '[' => {
-                self.advance();
-                Some(Token::LSquare)
-            }
-
-            ']' => {
-                self.advance();
-                Some(Token::RSquare)
-            }
-
-            '{' => {
-                self.advance();
-                Some(Token::LCurly)
-            }
-
-            '}' => {
-                self.advance();
-                Some(Token::RCurly)
-            }
-
-            ':' => {
-                self.advance();
-                Some(Token::Colon)
-            }
-
-            ';' => {
-                self.advance();
-                Some(Token::Semicolon)
-            }
-
-            '?' => {
-                self.advance();
-                Some(Token::Question)
-            }
-
-            // !, could be !=
-            '!' => {
-                if self.peek() == Some('=') {
-                    self.advance();
-                    self.advance();
-
-                    Some(Token::NotEqual)
-                } else {
-                    self.advance();
-
-                    Some(Token::Not)
-                }
-            }
-
-            // <, could be <=
-            '<' => {
-                if self.peek() == Some('=') {
-                    self.advance();
-                    self.advance();
-
-                    Some(Token::LessThanOrEqual)
-                } else {
-                    self.advance();
-
-                    Some(Token::LessThan)
-                }
-            }
-
-            // >, could be >=
-            '>' => {
-                if self.peek() == Some('=') {
-                    self.advance();
-                    self.advance();
-
-                    Some(Token::GreaterThanOrEqual)
-                } else {
-                    self.advance();
-
-                    Some(Token::GreaterThan)
-                }
-            }
-
-            // &, must be &&
-            // TODO: bitwise and
-            '&' => {
-                if self.peek() == Some('&') {
-                    self.advance();
-                    self.advance();
-
-                    Some(Token::And)
-                } else {
-                    self.advance();
-
-                    Some(Token::Unknown('&'))
-                }
-            }
-
-            // |, must be ||
-            '|' => {
-                if self.peek() == Some('|') {
-                    self.advance();
-                    self.advance();
-
-                    Some(Token::Or)
-                } else {
-                    self.advance();
-
-                    Some(Token::Pipe)
-                }
-            }
-
+        let ch = self.advance()?;
+        match ch {
+            '(' => Some(Token::LParen),
+            ')' => Some(Token::RParen),
+            '[' => Some(Token::LSquare),
+            ']' => Some(Token::RSquare),
+            '{' => Some(Token::LCurly),
+            '}' => Some(Token::RCurly),
+            ':' => Some(Token::Colon),
+            ';' => Some(Token::Semicolon),
+            '?' => Some(Token::Question),
+            '=' => Some(self.check_double('=', Token::Equals, Token::Assign)),
+            '!' => Some(self.check_double('=', Token::NotEquals, Token::Not)),
+            '<' => Some(self.check_double('=', Token::LessThanEquals, Token::LessThan)),
+            '>' => Some(self.check_double('=', Token::GreaterThanEquals, Token::GreaterThan)),
+            '-' => Some(self.check_double('>', Token::Arrow, Token::Minus)),
+            '&' => Some(self.check_double('&', Token::And, Token::Unknown('&'))),
+            '|' => Some(self.check_double('|', Token::Or, Token::Pipe)),
+            '+' => Some(Token::Plus),
+            '*' => Some(Token::Star),
+            '/' => Some(Token::Slash),
+            '"' => Some(Token::Literal(self.read_literal())),
             '_' => {
-                self.advance();
+                if let Some(&next) = self.peek() {
+                    if next.is_ascii_alphabetic() || next.is_ascii_digit() || next == '_' {
+                        return Some(Token::Ident(self.read_ident(ch)));
+                    }
+                }
 
                 Some(Token::Underscore)
             }
+            c if c.is_ascii_alphabetic() => Some(Token::Ident(self.read_ident(c))),
+            c if c.is_ascii_digit() => Some(self.read_number(c)),
 
-            // Read string literal
-            '"' => Some(Token::Literal(self.read_string().into())),
-
-            // Identifier
-            c if c.is_ascii_alphabetic() || c == '_' => {
-                return Some(Token::Ident(self.read_ident().into()));
-            }
-
-            // Number
-            c if c.is_ascii_digit() => {
-                let (number, is_float) = self.read_number();
-                return if is_float {
-                    Some(
-                        number
-                            .parse::<f64>()
-                            .map(Token::Float)
-                            .unwrap_or(Token::Unknown(c)),
-                    )
-                } else {
-                    Some(
-                        number
-                            .parse::<i64>()
-                            .map(Token::Int)
-                            .unwrap_or(Token::Unknown(c)),
-                    )
-                };
-            }
-
-            c => {
-                self.advance();
-                Some(Token::Unknown(c))
-            }
+            c => Some(Token::Unknown(c)),
         }
-    }
-
-    #[inline]
-    pub fn tokenize(input: &str) -> Vec<Token> {
-        Self::new(input).collect::<Vec<_>>()
     }
 }
 
-impl Iterator for Lexer {
+impl<'a> Iterator for TemplateLexer<'a> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -437,554 +270,366 @@ impl Iterator for Lexer {
     }
 }
 
+pub struct Lexer<const O: char, const C: char> {
+    templates: Vec<String>,
+}
+
+impl<const O: char, const C: char> Lexer<O, C> {
+    /// Compile time check for forbbidden delimiters
+    const _CHECK: () = {
+        assert!(O != '\\', "opening delimiter cannot be a backslash (`\\`)");
+        assert!(C != '\\', "closing delimiter cannot be a backslash (`\\`)");
+    };
+
+    pub fn new<S>(input: S) -> Self
+    where
+        S: AsRef<str>,
+    {
+        _ = Self::_CHECK;
+
+        let mut templates = Vec::new();
+        let mut chars = input.as_ref().chars().peekable();
+        let mut in_template = false;
+        let mut curr_template = String::new();
+
+        while let Some(ch) = chars.next() {
+            match ch {
+                c if c == O => {
+                    // Skip double openings (escape)
+                    if chars.peek() == Some(&O) {
+                        chars.next();
+
+                        if in_template {
+                            curr_template.push(O);
+                        }
+
+                        continue;
+                    }
+
+                    if !in_template {
+                        in_template = true;
+                    } else {
+                        // Nested opening delimiter
+                        curr_template.push(ch);
+                    }
+                }
+
+                c if c == C => {
+                    if chars.peek() == Some(&C) {
+                        chars.next();
+
+                        if in_template {
+                            curr_template.push(C);
+                        }
+
+                        continue;
+                    }
+
+                    if in_template {
+                        in_template = false;
+
+                        if !curr_template.is_empty() {
+                            templates.push(mem::take(&mut curr_template));
+                        }
+                    }
+                }
+
+                ch => {
+                    if in_template {
+                        curr_template.push(ch)
+                    }
+                }
+            }
+        }
+
+        Self { templates }
+    }
+
+    fn tokenize(self) -> Vec<Vec<Token>> {
+        let mut results = Vec::with_capacity(self.templates.len());
+
+        for template in self.templates {
+            let lexer = TemplateLexer::new(&template);
+
+            results.push(lexer.collect::<Vec<_>>());
+        }
+
+        results
+    }
+}
+
 #[cfg(test)]
-mod lexer_tests {
-    use crate::lexer::{Lexer, Token};
-    use std::rc::Rc;
+mod tests {
+    use super::*;
+
+    type L = Lexer<'{', '}'>;
 
-    // ==================== Basic Token Tests ====================
-
-    #[test]
-    fn test_empty_input() {
-        let tokens = Lexer::tokenize("");
-        assert!(tokens.is_empty());
-    }
-
-    #[test]
-    fn test_whitespace_only() {
-        let tokens = Lexer::tokenize("   \t\n  ");
-        assert!(tokens.is_empty());
-    }
-
-    #[test]
-    fn test_single_identifier() {
-        let tokens = Lexer::tokenize("name");
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::Ident(s) if &**s == "name"));
-    }
-
-    #[test]
-    fn test_identifier_with_underscore() {
-        let tokens = Lexer::tokenize("first_name");
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::Ident(s) if &**s == "first_name"));
-    }
-
-    #[test]
-    fn test_identifier_with_numbers() {
-        let tokens = Lexer::tokenize("var123");
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::Ident(s) if &**s == "var123"));
-    }
-
-    #[test]
-    fn test_underscore_prefix() {
-        let tokens = Lexer::tokenize("_private");
-        assert_eq!(tokens.len(), 2);
-        assert_eq!(tokens[0], Token::Underscore);
-        assert!(matches!(&tokens[1], Token::Ident(s) if &**s == "private"));
-    }
-
-    // ==================== Number Tests ====================
-
-    #[test]
-    fn test_integer() {
-        let tokens = Lexer::tokenize("42");
-        assert_eq!(tokens.len(), 1);
-        assert_eq!(tokens[0], Token::Int(42));
-    }
-
-    #[test]
-    fn test_negative_integer() {
-        let tokens = Lexer::tokenize("-42");
-        assert_eq!(tokens.len(), 2);
-        assert_eq!(tokens[0], Token::Minus);
-        assert_eq!(tokens[1], Token::Int(42));
-    }
-
-    #[test]
-    fn test_zero() {
-        let tokens = Lexer::tokenize("0");
-        assert_eq!(tokens.len(), 1);
-        assert_eq!(tokens[0], Token::Int(0));
-    }
-
-    #[test]
-    fn test_large_integer() {
-        let tokens = Lexer::tokenize("9223372036854775807");
-        assert_eq!(tokens.len(), 1);
-        assert_eq!(tokens[0], Token::Int(i64::MAX));
-    }
-
-    #[test]
-    fn test_float() {
-        let tokens = Lexer::tokenize("3.14");
-        assert_eq!(tokens.len(), 1);
-        assert_eq!(tokens[0], Token::Float(3.14));
-    }
-
-    #[test]
-    fn test_float_leading_zero() {
-        let tokens = Lexer::tokenize("0.5");
-        assert_eq!(tokens.len(), 1);
-        assert_eq!(tokens[0], Token::Float(0.5));
-    }
-
-    #[test]
-    fn test_float_multiple_digits() {
-        let tokens = Lexer::tokenize("123.456");
-        assert_eq!(tokens.len(), 1);
-        assert_eq!(tokens[0], Token::Float(123.456));
-    }
-
-    #[test]
-    fn test_number_followed_by_dot_no_digit() {
-        // "42.abc" = 3 tokens: Int(42), Unknown('.'), Ident("abc")
-        // The dot is not consumed as part of the number since no digit follows
-        let tokens = Lexer::tokenize("42.abc");
-        assert_eq!(tokens.len(), 3);
-        assert_eq!(tokens[0], Token::Int(42));
-        assert_eq!(tokens[1], Token::Unknown('.'));
-        assert!(matches!(&tokens[2], Token::Ident(s) if &**s == "abc"));
-    }
-
-    #[test]
-    fn test_integer_overflow_becomes_unknown() {
-        let tokens = Lexer::tokenize("99999999999999999999999999999");
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(tokens[0], Token::Unknown(_)));
-    }
-
-    // ==================== String Literal Tests ====================
-
-    #[test]
-    fn test_simple_string() {
-        let tokens = Lexer::tokenize("\"hello\"");
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::Literal(s) if &**s == "hello"));
-    }
-
-    #[test]
-    fn test_empty_string() {
-        let tokens = Lexer::tokenize("\"\"");
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::Literal(s) if &**s == ""));
-    }
-
-    #[test]
-    fn test_string_with_spaces() {
-        let tokens = Lexer::tokenize("\"hello world\"");
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::Literal(s) if &**s == "hello world"));
-    }
-
-    #[test]
-    fn test_string_escape_newline() {
-        let tokens = Lexer::tokenize("\"line1\\nline2\"");
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::Literal(s) if &**s == "line1\nline2"));
-    }
-
-    #[test]
-    fn test_string_escape_tab() {
-        let tokens = Lexer::tokenize("\"col1\\tcol2\"");
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::Literal(s) if &**s == "col1\tcol2"));
-    }
-
-    #[test]
-    fn test_string_escape_carriage_return() {
-        let tokens = Lexer::tokenize("\"line\\r\"");
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::Literal(s) if &**s == "line\r"));
-    }
-
-    #[test]
-    fn test_string_escape_backslash() {
-        let tokens = Lexer::tokenize("\"path\\\\to\\\\file\"");
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::Literal(s) if &**s == "path\\to\\file"));
-    }
-
-    #[test]
-    fn test_string_escape_quote() {
-        let tokens = Lexer::tokenize("\"say \\\"hello\\\"\"");
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::Literal(s) if &**s == "say \"hello\""));
-    }
-
-    #[test]
-    fn test_string_escape_null() {
-        let tokens = Lexer::tokenize("\"null\\0char\"");
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::Literal(s) if &**s == "null\x00char"));
-    }
-
-    #[test]
-    fn test_string_unknown_escape() {
-        let tokens = Lexer::tokenize("\"\\x\"");
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::Literal(s) if &**s == "x"));
-    }
-
-    // ==================== Operator Tests ====================
-
-    #[test]
-    fn test_assign() {
-        let tokens = Lexer::tokenize("=");
-        assert_eq!(tokens, vec![Token::Assign]);
-    }
-
-    #[test]
-    fn test_equal() {
-        let tokens = Lexer::tokenize("==");
-        assert_eq!(tokens, vec![Token::Equal]);
-    }
-
-    #[test]
-    fn test_arrow() {
-        let tokens = Lexer::tokenize("=>");
-        assert_eq!(tokens, vec![Token::Arrow]);
-    }
-
-    #[test]
-    fn test_not() {
-        let tokens = Lexer::tokenize("!");
-        assert_eq!(tokens, vec![Token::Not]);
-    }
-
-    #[test]
-    fn test_not_equal() {
-        let tokens = Lexer::tokenize("!=");
-        assert_eq!(tokens, vec![Token::NotEqual]);
+    fn tokenize(input: &str) -> Vec<Token> {
+        TemplateLexer::new(input).collect()
     }
 
     #[test]
-    fn test_plus() {
-        let tokens = Lexer::tokenize("+");
-        assert_eq!(tokens, vec![Token::Plus]);
+    fn test_basic_arithmetic() {
+        let input = "10 + 20 * 5";
+        let tokens = tokenize(input);
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Int(10),
+                Token::Plus,
+                Token::Int(20),
+                Token::Star,
+                Token::Int(5),
+            ]
+        );
     }
 
     #[test]
-    fn test_minus() {
-        let tokens = Lexer::tokenize("-");
-        assert_eq!(tokens, vec![Token::Minus]);
+    fn test_identifiers_and_assignment() {
+        let input = "my_var = x_1";
+        let tokens = tokenize(input);
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Ident(Rc::from("my_var")),
+                Token::Assign,
+                Token::Ident(Rc::from("x_1")),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_numbers() {
+        assert_eq!(tokenize("123"), vec![Token::Int(123)]);
+        assert_eq!(tokenize("123.456"), vec![Token::Float(123.456)]);
+
+        let tokens = tokenize("123.");
+        assert_eq!(tokens, vec![Token::Int(123), Token::Unknown('.')]);
     }
 
     #[test]
-    fn test_star() {
-        let tokens = Lexer::tokenize("*");
-        assert_eq!(tokens, vec![Token::Star]);
-    }
-
-    #[test]
-    fn test_slash() {
-        let tokens = Lexer::tokenize("/");
-        assert_eq!(tokens, vec![Token::Slash]);
-    }
+    fn test_string_literals() {
+        let input = r#" "Hello World" "Escaped\nNewline" "#;
+        let tokens = tokenize(input);
 
-    #[test]
-    fn test_less_than() {
-        let tokens = Lexer::tokenize("<");
-        assert_eq!(tokens, vec![Token::LessThan]);
-    }
-
-    #[test]
-    fn test_less_than_or_equal() {
-        let tokens = Lexer::tokenize("<=");
-        assert_eq!(tokens, vec![Token::LessThanOrEqual]);
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Literal(Rc::from("Hello World")),
+                Token::Literal(Rc::from("Escaped\nNewline")),
+            ]
+        );
     }
 
     #[test]
-    fn test_greater_than() {
-        let tokens = Lexer::tokenize(">");
-        assert_eq!(tokens, vec![Token::GreaterThan]);
-    }
+    fn test_comparison_and_logic() {
+        let input = "a >= b && c != d || e < f";
+        let tokens = tokenize(input);
 
-    #[test]
-    fn test_greater_than_or_equal() {
-        let tokens = Lexer::tokenize(">=");
-        assert_eq!(tokens, vec![Token::GreaterThanOrEqual]);
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Ident(Rc::from("a")),
+                Token::GreaterThanEquals,
+                Token::Ident(Rc::from("b")),
+                Token::And,
+                Token::Ident(Rc::from("c")),
+                Token::NotEquals,
+                Token::Ident(Rc::from("d")),
+                Token::Or,
+                Token::Ident(Rc::from("e")),
+                Token::LessThan,
+                Token::Ident(Rc::from("f")),
+            ]
+        );
     }
 
     #[test]
-    fn test_and() {
-        let tokens = Lexer::tokenize("&&");
-        assert_eq!(tokens, vec![Token::And]);
-    }
+    fn test_grouping_delimiters() {
+        let input = "( [ { } ] )";
+        let tokens = tokenize(input);
 
-    #[test]
-    fn test_single_ampersand_unknown() {
-        let tokens = Lexer::tokenize("&");
-        assert_eq!(tokens, vec![Token::Unknown('&')]);
+        assert_eq!(
+            tokens,
+            vec![
+                Token::LParen,
+                Token::LSquare,
+                Token::LCurly,
+                Token::RCurly,
+                Token::RSquare,
+                Token::RParen,
+            ]
+        );
     }
 
     #[test]
-    fn test_or() {
-        let tokens = Lexer::tokenize("||");
-        assert_eq!(tokens, vec![Token::Or]);
-    }
+    fn test_arrow_and_minus() {
+        let input = "a -> b - c";
+        let tokens = tokenize(input);
 
-    #[test]
-    fn test_pipe() {
-        let tokens = Lexer::tokenize("|");
-        assert_eq!(tokens, vec![Token::Pipe]);
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Ident(Rc::from("a")),
+                Token::Arrow,
+                Token::Ident(Rc::from("b")),
+                Token::Minus,
+                Token::Ident(Rc::from("c")),
+            ]
+        );
     }
 
-    // ==================== Delimiter Tests ====================
-
     #[test]
-    fn test_lparen() {
-        let tokens = Lexer::tokenize("(");
-        assert_eq!(tokens, vec![Token::LParen]);
-    }
+    fn test_complex_expression() {
+        let input = "func(x, 10) | filter";
+        let tokens = tokenize(input);
 
-    #[test]
-    fn test_rparen() {
-        let tokens = Lexer::tokenize(")");
-        assert_eq!(tokens, vec![Token::RParen]);
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Ident(Rc::from("func")),
+                Token::LParen,
+                Token::Ident(Rc::from("x")),
+                Token::Unknown(','),
+                Token::Int(10),
+                Token::RParen,
+                Token::Pipe,
+                Token::Ident(Rc::from("filter")),
+            ]
+        );
     }
 
     #[test]
-    fn test_lsquare() {
-        let tokens = Lexer::tokenize("[");
-        assert_eq!(tokens, vec![Token::LSquare]);
+    fn test_underscores() {
+        assert_eq!(tokenize("_"), vec![Token::Underscore]);
+        assert_eq!(tokenize("_var"), vec![Token::Ident(Rc::from("_var"))]);
     }
 
     #[test]
-    fn test_rsquare() {
-        let tokens = Lexer::tokenize("]");
-        assert_eq!(tokens, vec![Token::RSquare]);
-    }
+    fn test_outer_lexer_integration() {
+        let input = "Hello { name }! score: { 1 + 2 }";
+        let lexer = Lexer::<'{', '}'>::new(input);
+        let results = lexer.tokenize();
 
-    #[test]
-    fn test_lcurly() {
-        let tokens = Lexer::tokenize("{");
-        assert_eq!(tokens, vec![Token::LCurly]);
-    }
+        assert_eq!(results.len(), 2);
 
-    #[test]
-    fn test_rcurly() {
-        let tokens = Lexer::tokenize("}");
-        assert_eq!(tokens, vec![Token::RCurly]);
-    }
+        assert_eq!(results[0], vec![Token::Ident(Rc::from("name"))]);
 
-    #[test]
-    fn test_colon() {
-        let tokens = Lexer::tokenize(":");
-        assert_eq!(tokens, vec![Token::Colon]);
+        assert_eq!(results[1], vec![Token::Int(1), Token::Plus, Token::Int(2)]);
     }
 
     #[test]
-    fn test_semicolon() {
-        let tokens = Lexer::tokenize(";");
-        assert_eq!(tokens, vec![Token::Semicolon]);
-    }
+    fn test_outer_lexer_escaping() {
+        let input = "Hello {{ ignored }} { actual }";
+        let lexer = Lexer::<'{', '}'>::new(input);
+        let results = lexer.tokenize();
 
-    #[test]
-    fn test_question() {
-        let tokens = Lexer::tokenize("?");
-        assert_eq!(tokens, vec![Token::Question]);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0], vec![Token::Ident(Rc::from("actual"))]);
     }
 
     #[test]
-    fn test_underscore() {
-        let tokens = Lexer::tokenize("_");
-        assert_eq!(tokens, vec![Token::Underscore]);
-    }
+    fn empty_input() {
+        let input = "";
+        let lexer = L::new(input);
 
-    // ==================== Complex Expression Tests ====================
-
-    #[test]
-    fn test_repeat_pattern() {
-        let tokens = Lexer::tokenize("pattern : 5");
-        assert_eq!(tokens.len(), 3);
-        assert!(matches!(&tokens[0], Token::Ident(s) if &**s == "pattern"));
-        assert_eq!(tokens[1], Token::Colon);
-        assert_eq!(tokens[2], Token::Int(5));
+        assert!(lexer.templates.is_empty());
     }
 
     #[test]
-    fn test_conditional_pattern() {
-        let tokens = Lexer::tokenize("cond ? yes : no");
-        assert_eq!(tokens.len(), 5);
-        assert!(matches!(&tokens[0], Token::Ident(s) if &**s == "cond"));
-        assert_eq!(tokens[1], Token::Question);
-        assert!(matches!(&tokens[2], Token::Ident(s) if &**s == "yes"));
-        assert_eq!(tokens[3], Token::Colon);
-        assert!(matches!(&tokens[4], Token::Ident(s) if &**s == "no"));
-    }
+    fn no_templates() {
+        let input = "Just some random text without any brackets.";
+        let lexer = L::new(input);
 
-    #[test]
-    fn test_switch_pattern() {
-        let tokens = Lexer::tokenize("val | a => x | b => y | _ => z");
-        assert_eq!(tokens.len(), 13);
-        assert!(matches!(&tokens[0], Token::Ident(s) if &**s == "val"));
-        assert_eq!(tokens[1], Token::Pipe);
-        assert!(matches!(&tokens[2], Token::Ident(s) if &**s == "a"));
-        assert_eq!(tokens[3], Token::Arrow);
+        assert!(lexer.templates.is_empty());
     }
 
     #[test]
-    fn test_arithmetic_expression() {
-        let tokens = Lexer::tokenize("a + b * c - d / e");
-        assert_eq!(tokens.len(), 9);
-        assert!(matches!(&tokens[0], Token::Ident(_)));
-        assert_eq!(tokens[1], Token::Plus);
-        assert!(matches!(&tokens[2], Token::Ident(_)));
-        assert_eq!(tokens[3], Token::Star);
-    }
+    fn basic_single() {
+        let input = "Hello! My name is {name}!";
+        let lexer = L::new(input);
 
-    #[test]
-    fn test_comparison_chain() {
-        let tokens = Lexer::tokenize("a < b && c > d || e == f");
-        assert_eq!(tokens.len(), 11);
+        assert_eq!(lexer.templates, vec!["name"]);
     }
 
     #[test]
-    fn test_nested_parens() {
-        let tokens = Lexer::tokenize("((a + b) * c)");
-        let expected = vec![
-            Token::LParen,
-            Token::LParen,
-            Token::Ident(Rc::from("a")),
-            Token::Plus,
-            Token::Ident(Rc::from("b")),
-            Token::RParen,
-            Token::Star,
-            Token::Ident(Rc::from("c")),
-            Token::RParen,
-        ];
-        assert_eq!(tokens, expected);
-    }
+    fn multiple_templates() {
+        let input = "{first} then {second} and {third}";
+        let lexer = L::new(input);
 
-    #[test]
-    fn test_mixed_brackets() {
-        let tokens = Lexer::tokenize("arr[0]{key}(fn)");
-
-        assert_eq!(tokens.len(), 10);
-        assert_eq!(tokens[1], Token::LSquare);
-        assert_eq!(tokens[3], Token::RSquare);
-        assert_eq!(tokens[4], Token::LCurly);
-        assert_eq!(tokens[6], Token::RCurly);
-        assert_eq!(tokens[7], Token::LParen);
-        assert_eq!(tokens[9], Token::RParen);
+        assert_eq!(lexer.templates, vec!["first", "second", "third"]);
     }
 
-    // ==================== Whitespace Handling Tests ====================
-
     #[test]
-    fn test_multiple_spaces() {
-        let tokens = Lexer::tokenize("a    b");
-        assert_eq!(tokens.len(), 2);
-    }
+    fn consecutive_templates() {
+        let input = "{a}{b}{c}";
+        let lexer = L::new(input);
 
-    #[test]
-    fn test_tabs_between_tokens() {
-        let tokens = Lexer::tokenize("a\t\tb");
-        assert_eq!(tokens.len(), 2);
+        assert_eq!(lexer.templates, vec!["a", "b", "c"]);
     }
 
     #[test]
-    fn test_newlines_between_tokens() {
-        let tokens = Lexer::tokenize("a\n\nb");
-        assert_eq!(tokens.len(), 2);
-    }
+    fn empty_inside_template() {
+        let input = "This is empty {}";
+        let lexer = L::new(input);
 
-    #[test]
-    fn test_mixed_whitespace() {
-        let tokens = Lexer::tokenize("  a \t\n  b  \n");
-        assert_eq!(tokens.len(), 2);
+        assert!(lexer.templates.is_empty());
     }
 
-    // ==================== Unknown Character Tests ====================
-
     #[test]
-    fn test_unknown_tilde() {
-        let tokens = Lexer::tokenize("~");
-        assert_eq!(tokens, vec![Token::Unknown('~')]);
-    }
+    fn escaped_openers() {
+        let input = "This is {{escaped}}";
+        let lexer = L::new(input);
 
-    #[test]
-    fn test_unknown_at() {
-        let tokens = Lexer::tokenize("@");
-        assert_eq!(tokens, vec![Token::Unknown('@')]);
+        assert!(lexer.templates.is_empty());
     }
 
     #[test]
-    fn test_unknown_hash() {
-        let tokens = Lexer::tokenize("#");
-        assert_eq!(tokens, vec![Token::Unknown('#')]);
-    }
+    fn ignore_text_inside_escaped_blocks() {
+        let input = "This is {{literal}} but this is {captured}";
+        let lexer = L::new(input);
 
-    #[test]
-    fn test_unknown_backtick() {
-        let tokens = Lexer::tokenize("`");
-        assert_eq!(tokens, vec![Token::Unknown('`')]);
+        assert_eq!(lexer.templates, vec!["captured"]);
     }
 
-    // ==================== Token Display Tests ====================
-
     #[test]
-    fn test_token_display() {
-        assert_eq!(format!("{}", Token::Assign), "Assign");
-        assert_eq!(format!("{}", Token::Plus), "Plus");
-        assert_eq!(format!("{}", Token::Int(42)), "42");
-        assert_eq!(format!("{}", Token::Float(3.14)), "3.14");
-        assert_eq!(format!("{}", Token::Ident(Rc::from("foo"))), "foo");
-        assert_eq!(format!("{}", Token::Unknown('?')), "Unknown(?)");
-    }
+    fn unclosed_template_at_end() {
+        let input = "This is {started but never finished";
+        let lexer = L::new(input);
 
-    // ==================== Token as_string Tests ====================
-
-    #[test]
-    fn test_token_as_string_ident() {
-        let token = Token::Ident(Rc::from("myvar"));
-        assert_eq!(&*token.as_string(), "myvar");
+        assert!(lexer.templates.is_empty());
     }
 
     #[test]
-    fn test_token_as_string_literal() {
-        let token = Token::Literal(Rc::from("hello"));
-        assert_eq!(&*token.as_string(), "hello");
-    }
+    fn unclosed_template_followed_by_valid_one() {
+        let input = "start {broken {valid}";
+        let lexer = L::new(input);
 
-    #[test]
-    fn test_token_as_string_int() {
-        let token = Token::Int(123);
-        assert_eq!(&*token.as_string(), "123");
+        assert_eq!(lexer.templates, vec!["broken {valid"]);
     }
 
     #[test]
-    fn test_token_as_string_float() {
-        let token = Token::Float(3.5);
-        assert_eq!(&*token.as_string(), "3.5");
-    }
+    fn different_delimiters() {
+        type SquareL = Lexer<'[', ']'>;
+        let input = "Hello [name], how are [you]?";
+        let lexer = SquareL::new(input);
 
-    #[test]
-    fn test_token_as_string_colon() {
-        assert_eq!(&*Token::Colon.as_string(), ":");
+        assert_eq!(lexer.templates, vec!["name", "you"]);
     }
 
     #[test]
-    fn test_token_as_string_question() {
-        assert_eq!(&*Token::Question.as_string(), "?");
-    }
+    fn whitespace_inside_template() {
+        let input = "{  spaced  }";
+        let lexer = L::new(input);
 
-    #[test]
-    fn test_token_as_string_pipe() {
-        assert_eq!(&*Token::Pipe.as_string(), "|");
+        assert_eq!(lexer.templates, vec!["  spaced  "]);
     }
 
     #[test]
-    fn test_token_as_string_arrow() {
-        assert_eq!(&*Token::Arrow.as_string(), "=>");
-    }
+    fn complex_directive_syntax() {
+        let input = "I love {dish->capitalize}!";
+        let lexer = L::new(input);
 
-    #[test]
-    fn test_token_as_string_other_returns_empty() {
-        assert_eq!(&*Token::Plus.as_string(), "");
-        assert_eq!(&*Token::Minus.as_string(), "");
-        assert_eq!(&*Token::LParen.as_string(), "");
+        assert_eq!(lexer.templates, vec!["dish->capitalize"]);
     }
 }
