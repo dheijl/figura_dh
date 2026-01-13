@@ -13,9 +13,25 @@ keywords = ["string", "format", "template"]
 
 exclude = [".vscode", ".gitignore", "docs", "CHANGELOG.md"]
 
-[dependencies]
-itoa = "1.0.15"
-ryu = "1.0.20"
 
 [lib]
 doctest = false
+
+[dependencies]
+itoa = "1.0.17"
+ryu = "1.0.22"
+
+
+[dev-dependencies]
+criterion = "0.8.1"
+
+[[bench]]
+name = "template_bench"
+path = "benchmarks/template_bench.rs"
+harness = false
+
+
+[[bench]]
+name = "repeat_bench"
+path = "benchmarks/repeat_bench.rs"
+harness = false

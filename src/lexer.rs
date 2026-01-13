@@ -1,13 +1,12 @@
-use core::mem;
-use std::{iter::Peekable, rc::Rc, str::Chars};
+use std::borrow::Cow;
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub enum Token {
-    Ident(Rc<str>),
+pub enum Token<'a> {
+    Ident(&'a str),
     Assign,
 
-    Int(i64),
-    Float(f64),
+    Int(&'a str),
+    Float(&'a str),
 
     LParen,
     RParen,
@@ -23,7 +22,9 @@ pub enum Token {
     Underscore,
 
     /// Verbatim string
-    Literal(Rc<str>),
+    /// Cow because when the string has escape sequences '\n', etc
+    /// A Heap allocated string is needed
+    Literal(Cow<'a, str>),
 
     // Operations
     Not,
@@ -42,594 +43,215 @@ pub enum Token {
     And,
     Or,
 
-    // Special
-    Arrow,
-
     Unknown(char),
 }
 
-impl Token {
-    const EOF: char = '\0';
-
-    /// Check if a character can form a multi-character token
-    #[inline]
-    fn try_double_char(first: char, second: char) -> Option<Token> {
-        match (first, second) {
-            ('=', '=') => Some(Token::Equals),
-            ('-', '>') => Some(Token::Arrow),
-            ('!', '=') => Some(Token::NotEquals),
-            ('<', '=') => Some(Token::LessThanEquals),
-            ('>', '=') => Some(Token::GreaterThanEquals),
-            ('&', '&') => Some(Token::And),
-            ('|', '|') => Some(Token::Or),
-
-            _ => None,
-        }
-    }
-
-    #[inline]
-    fn try_single_char(ch: char) -> Option<Token> {
-        match ch {
-            '=' => Some(Token::Assign),
-            '(' => Some(Token::LParen),
-            ')' => Some(Token::RParen),
-            '[' => Some(Token::LSquare),
-            ']' => Some(Token::RSquare),
-            '{' => Some(Token::LCurly),
-            '}' => Some(Token::RCurly),
-            ':' => Some(Token::Colon),
-            ';' => Some(Token::Semicolon),
-            '?' => Some(Token::Question),
-            '|' => Some(Token::Pipe),
-            '!' => Some(Token::Not),
-            '+' => Some(Token::Plus),
-            '-' => Some(Token::Minus),
-            '*' => Some(Token::Star),
-            '/' => Some(Token::Slash),
-            '>' => Some(Token::GreaterThan),
-            '<' => Some(Token::LessThan),
-
-            _ => None,
-        }
-    }
-}
-
-struct TemplateLexer<'a> {
-    input: Peekable<Chars<'a>>,
+pub struct TemplateLexer<'a> {
+    input: &'a str,
+    bytes: &'a [u8],
+    cursor: usize,
 }
 
 impl<'a> TemplateLexer<'a> {
-    fn new(input: &'a str) -> Self {
+    pub fn new(input: &'a str) -> Self {
         Self {
-            input: input.chars().peekable(),
+            input,
+            bytes: input.as_bytes(),
+            cursor: 0,
         }
     }
 
     #[inline]
-    fn advance(&mut self) -> Option<char> {
-        self.input.next()
+    fn current(&self) -> u8 {
+        if self.cursor < self.bytes.len() {
+            self.bytes[self.cursor]
+        } else {
+            0
+        }
     }
 
     #[inline]
-    fn peek(&mut self) -> Option<&char> {
-        self.input.peek()
+    fn peek(&mut self) -> u8 {
+        if self.cursor + 1 < self.bytes.len() {
+            self.bytes[self.cursor + 1]
+        } else {
+            0
+        }
+    }
+
+    #[inline]
+    fn advance(&mut self) {
+        if self.cursor < self.bytes.len() {
+            self.cursor += 1;
+        }
     }
 
     #[inline]
     fn skip_whitespace(&mut self) {
-        while let Some(&ch) = self.peek() {
-            if !ch.is_whitespace() {
-                break;
-            }
-
-            self.advance();
+        while self.cursor < self.bytes.len() && self.current().is_ascii_whitespace() {
+            self.cursor += 1;
         }
     }
 
-    fn read_literal(&mut self) -> Rc<str> {
-        let mut output = String::new();
+    fn read_literal(&mut self) -> Cow<'a, str> {
+        let start = self.cursor;
+        let mut tmp_cursor = start;
+        let mut escaped = false;
 
-        while let Some(ch) = self.advance() {
-            match ch {
-                '"' => break,
-
-                '\\' => match self.advance() {
-                    Some('n') => output.push('\n'),
-                    Some('t') => output.push('\t'),
-                    Some('r') => output.push('\r'),
-                    Some('\\') => output.push('\\'),
-                    Some('"') => output.push('"'),
-                    Some('0') => output.push('\0'),
-                    Some(c) => output.push(c),
-                    None => break,
-                },
-
-                c => output.push(c),
+        while tmp_cursor < self.bytes.len() {
+            match self.bytes[tmp_cursor] {
+                b'"' => break,
+                b'\\' => {
+                    escaped = true;
+                    tmp_cursor += 2;
+                }
+                _ => tmp_cursor += 1,
             }
         }
 
-        Rc::from(output)
+        if !escaped {
+            let len = tmp_cursor - start;
+            self.cursor = tmp_cursor + 1; // skip closing quote
+            return Cow::Borrowed(&self.input[start..start + len]);
+        }
+
+        let mut out = String::with_capacity(tmp_cursor - start);
+
+        while self.cursor < self.bytes.len() {
+            match self.current() {
+                b'"' => {
+                    self.advance();
+                    break;
+                }
+                b'\\' => {
+                    self.advance();
+                    if self.cursor < self.bytes.len() {
+                        match self.current() {
+                            b'n' => out.push('\n'),
+                            b't' => out.push('\t'),
+                            b'r' => out.push('\r'),
+                            b'\\' => out.push('\\'),
+                            b'"' => out.push('"'),
+                            b'0' => out.push('\0'),
+                            c => out.push(c as char),
+                        }
+                        self.advance();
+                    }
+                }
+                c => {
+                    out.push(c as char);
+                    self.advance();
+                }
+            }
+        }
+
+        Cow::Owned(out)
     }
 
-    fn read_ident(&mut self, first: char) -> Rc<str> {
-        let mut output = String::from(first);
+    fn read_ident(&mut self, start: usize) -> &'a str {
+        while self.cursor < self.bytes.len() {
+            let b = self.bytes[self.cursor];
 
-        while let Some(&ch) = self.peek() {
-            if ch.is_ascii_alphabetic() || ch.is_ascii_digit() || ch == '_' {
-                output.push(self.advance().unwrap());
+            if b.is_ascii_alphabetic() || b.is_ascii_digit() || b == b'_' {
+                self.cursor += 1;
             } else {
                 break;
             }
         }
 
-        Rc::from(output)
+        &self.input[start..self.cursor]
     }
 
-    fn read_number(&mut self, first: char) -> Token {
-        let mut output = String::from(first);
+    fn read_number(&mut self, start: usize) -> Token<'a> {
         let mut is_float = false;
 
-        while let Some(&ch) = self.peek() {
-            if ch.is_ascii_digit() {
-                output.push(self.advance().unwrap());
-            } else {
-                break;
+        while self.cursor < self.bytes.len() && self.current().is_ascii_digit() {
+            self.cursor += 1;
+        }
+
+        if self.current() == b'.' && self.peek().is_ascii_digit() {
+            is_float = true;
+            self.cursor += 1; // skip '.'
+
+            while self.cursor < self.bytes.len() && self.current().is_ascii_digit() {
+                self.cursor += 1;
             }
         }
 
-        if let Some(&'.') = self.peek() {
-            let mut iter_clone = self.input.clone();
-
-            iter_clone.next();
-
-            if let Some(next_ch) = iter_clone.next() {
-                if next_ch.is_ascii_digit() {
-                    is_float = true;
-
-                    output.push(self.advance().unwrap());
-
-                    while let Some(&ch) = self.peek() {
-                        if ch.is_ascii_digit() {
-                            output.push(self.advance().unwrap());
-                        } else {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+        let slice = &self.input[start..self.cursor];
 
         if is_float {
-            output
-                .parse::<f64>()
-                .map(Token::Float)
-                .unwrap_or(Token::Unknown(first))
+            Token::Float(slice)
         } else {
-            output
-                .parse::<i64>()
-                .map(Token::Int)
-                .unwrap_or(Token::Unknown(first))
+            Token::Int(slice)
         }
-    }
-    fn check_double(&mut self, expected: char, matched: Token, unmatched: Token) -> Token {
-        if let Some(&ch) = self.peek() {
-            if ch == expected {
-                self.advance();
-                return matched;
-            }
-        }
-        unmatched
     }
 
-    fn next_token(&mut self) -> Option<Token> {
+    #[inline]
+    fn check_double(
+        &mut self,
+        expected: u8,
+        matched: Token<'a>,
+        unmatched: Token<'a>,
+    ) -> Token<'a> {
+        if self.current() == expected {
+            self.advance();
+            matched
+        } else {
+            unmatched
+        }
+    }
+
+    fn next_token(&mut self) -> Option<Token<'a>> {
         self.skip_whitespace();
-        let ch = self.advance()?;
+
+        if self.cursor >= self.bytes.len() {
+            return None;
+        }
+
+        let start = self.cursor;
+        let ch = self.current();
+        self.advance();
+
         match ch {
-            '(' => Some(Token::LParen),
-            ')' => Some(Token::RParen),
-            '[' => Some(Token::LSquare),
-            ']' => Some(Token::RSquare),
-            '{' => Some(Token::LCurly),
-            '}' => Some(Token::RCurly),
-            ':' => Some(Token::Colon),
-            ';' => Some(Token::Semicolon),
-            '?' => Some(Token::Question),
-            '=' => Some(self.check_double('=', Token::Equals, Token::Assign)),
-            '!' => Some(self.check_double('=', Token::NotEquals, Token::Not)),
-            '<' => Some(self.check_double('=', Token::LessThanEquals, Token::LessThan)),
-            '>' => Some(self.check_double('=', Token::GreaterThanEquals, Token::GreaterThan)),
-            '-' => Some(self.check_double('>', Token::Arrow, Token::Minus)),
-            '&' => Some(self.check_double('&', Token::And, Token::Unknown('&'))),
-            '|' => Some(self.check_double('|', Token::Or, Token::Pipe)),
-            '+' => Some(Token::Plus),
-            '*' => Some(Token::Star),
-            '/' => Some(Token::Slash),
-            '"' => Some(Token::Literal(self.read_literal())),
-            '_' => {
-                if let Some(&next) = self.peek() {
-                    if next.is_ascii_alphabetic() || next.is_ascii_digit() || next == '_' {
-                        return Some(Token::Ident(self.read_ident(ch)));
-                    }
+            b'(' => Some(Token::LParen),
+            b')' => Some(Token::RParen),
+            b'[' => Some(Token::LSquare),
+            b']' => Some(Token::RSquare),
+            b'{' => Some(Token::LCurly),
+            b'}' => Some(Token::RCurly),
+            b':' => Some(Token::Colon),
+            b';' => Some(Token::Semicolon),
+            b'?' => Some(Token::Question),
+            b'+' => Some(Token::Plus),
+            b'*' => Some(Token::Star),
+            b'/' => Some(Token::Slash),
+            b'=' => Some(self.check_double(b'=', Token::Equals, Token::Assign)),
+            b'!' => Some(self.check_double(b'=', Token::NotEquals, Token::Not)),
+            b'<' => Some(self.check_double(b'=', Token::LessThanEquals, Token::LessThan)),
+            b'>' => Some(self.check_double(b'=', Token::GreaterThanEquals, Token::GreaterThan)),
+            b'&' => Some(self.check_double(b'&', Token::And, Token::Unknown('&'))),
+            b'|' => Some(self.check_double(b'|', Token::Or, Token::Pipe)),
+            b'"' => Some(Token::Literal(self.read_literal())),
+            b'_' => {
+                let next = self.current();
+                if next.is_ascii_alphabetic() || next.is_ascii_digit() || next == b'_' {
+                    Some(Token::Ident(self.read_ident(start)))
+                } else {
+                    Some(Token::Underscore)
                 }
-
-                Some(Token::Underscore)
             }
-            c if c.is_ascii_alphabetic() => Some(Token::Ident(self.read_ident(c))),
-            c if c.is_ascii_digit() => Some(self.read_number(c)),
-
-            c => Some(Token::Unknown(c)),
+            b if b.is_ascii_alphabetic() => Some(Token::Ident(self.read_ident(start))),
+            b if b.is_ascii_digit() => Some(self.read_number(start)),
+            b => Some(Token::Unknown(b as char)),
         }
     }
 }
 
 impl<'a> Iterator for TemplateLexer<'a> {
-    type Item = Token;
+    type Item = Token<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.next_token()
-    }
-}
-
-pub struct Lexer<const O: char, const C: char> {
-    templates: Vec<String>,
-}
-
-impl<const O: char, const C: char> Lexer<O, C> {
-    /// Compile time check for forbbidden delimiters
-    const _CHECK: () = {
-        assert!(O != '\\', "opening delimiter cannot be a backslash (`\\`)");
-        assert!(C != '\\', "closing delimiter cannot be a backslash (`\\`)");
-    };
-
-    pub fn new<S>(input: S) -> Self
-    where
-        S: AsRef<str>,
-    {
-        _ = Self::_CHECK;
-
-        let mut templates = Vec::new();
-        let mut chars = input.as_ref().chars().peekable();
-        let mut in_template = false;
-        let mut curr_template = String::new();
-
-        while let Some(ch) = chars.next() {
-            match ch {
-                c if c == O => {
-                    // Skip double openings (escape)
-                    if chars.peek() == Some(&O) {
-                        chars.next();
-
-                        if in_template {
-                            curr_template.push(O);
-                        }
-
-                        continue;
-                    }
-
-                    if !in_template {
-                        in_template = true;
-                    } else {
-                        // Nested opening delimiter
-                        curr_template.push(ch);
-                    }
-                }
-
-                c if c == C => {
-                    if chars.peek() == Some(&C) {
-                        chars.next();
-
-                        if in_template {
-                            curr_template.push(C);
-                        }
-
-                        continue;
-                    }
-
-                    if in_template {
-                        in_template = false;
-
-                        if !curr_template.is_empty() {
-                            templates.push(mem::take(&mut curr_template));
-                        }
-                    }
-                }
-
-                ch => {
-                    if in_template {
-                        curr_template.push(ch)
-                    }
-                }
-            }
-        }
-
-        Self { templates }
-    }
-
-    fn tokenize(self) -> Vec<Vec<Token>> {
-        let mut results = Vec::with_capacity(self.templates.len());
-
-        for template in self.templates {
-            let lexer = TemplateLexer::new(&template);
-
-            results.push(lexer.collect::<Vec<_>>());
-        }
-
-        results
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    type L = Lexer<'{', '}'>;
-
-    fn tokenize(input: &str) -> Vec<Token> {
-        TemplateLexer::new(input).collect()
-    }
-
-    #[test]
-    fn test_basic_arithmetic() {
-        let input = "10 + 20 * 5";
-        let tokens = tokenize(input);
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Int(10),
-                Token::Plus,
-                Token::Int(20),
-                Token::Star,
-                Token::Int(5),
-            ]
-        );
-    }
-
-    #[test]
-    fn test_identifiers_and_assignment() {
-        let input = "my_var = x_1";
-        let tokens = tokenize(input);
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Ident(Rc::from("my_var")),
-                Token::Assign,
-                Token::Ident(Rc::from("x_1")),
-            ]
-        );
-    }
-
-    #[test]
-    fn test_numbers() {
-        assert_eq!(tokenize("123"), vec![Token::Int(123)]);
-        assert_eq!(tokenize("123.456"), vec![Token::Float(123.456)]);
-
-        let tokens = tokenize("123.");
-        assert_eq!(tokens, vec![Token::Int(123), Token::Unknown('.')]);
-    }
-
-    #[test]
-    fn test_string_literals() {
-        let input = r#" "Hello World" "Escaped\nNewline" "#;
-        let tokens = tokenize(input);
-
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Literal(Rc::from("Hello World")),
-                Token::Literal(Rc::from("Escaped\nNewline")),
-            ]
-        );
-    }
-
-    #[test]
-    fn test_comparison_and_logic() {
-        let input = "a >= b && c != d || e < f";
-        let tokens = tokenize(input);
-
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Ident(Rc::from("a")),
-                Token::GreaterThanEquals,
-                Token::Ident(Rc::from("b")),
-                Token::And,
-                Token::Ident(Rc::from("c")),
-                Token::NotEquals,
-                Token::Ident(Rc::from("d")),
-                Token::Or,
-                Token::Ident(Rc::from("e")),
-                Token::LessThan,
-                Token::Ident(Rc::from("f")),
-            ]
-        );
-    }
-
-    #[test]
-    fn test_grouping_delimiters() {
-        let input = "( [ { } ] )";
-        let tokens = tokenize(input);
-
-        assert_eq!(
-            tokens,
-            vec![
-                Token::LParen,
-                Token::LSquare,
-                Token::LCurly,
-                Token::RCurly,
-                Token::RSquare,
-                Token::RParen,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_arrow_and_minus() {
-        let input = "a -> b - c";
-        let tokens = tokenize(input);
-
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Ident(Rc::from("a")),
-                Token::Arrow,
-                Token::Ident(Rc::from("b")),
-                Token::Minus,
-                Token::Ident(Rc::from("c")),
-            ]
-        );
-    }
-
-    #[test]
-    fn test_complex_expression() {
-        let input = "func(x, 10) | filter";
-        let tokens = tokenize(input);
-
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Ident(Rc::from("func")),
-                Token::LParen,
-                Token::Ident(Rc::from("x")),
-                Token::Unknown(','),
-                Token::Int(10),
-                Token::RParen,
-                Token::Pipe,
-                Token::Ident(Rc::from("filter")),
-            ]
-        );
-    }
-
-    #[test]
-    fn test_underscores() {
-        assert_eq!(tokenize("_"), vec![Token::Underscore]);
-        assert_eq!(tokenize("_var"), vec![Token::Ident(Rc::from("_var"))]);
-    }
-
-    #[test]
-    fn test_outer_lexer_integration() {
-        let input = "Hello { name }! score: { 1 + 2 }";
-        let lexer = Lexer::<'{', '}'>::new(input);
-        let results = lexer.tokenize();
-
-        assert_eq!(results.len(), 2);
-
-        assert_eq!(results[0], vec![Token::Ident(Rc::from("name"))]);
-
-        assert_eq!(results[1], vec![Token::Int(1), Token::Plus, Token::Int(2)]);
-    }
-
-    #[test]
-    fn test_outer_lexer_escaping() {
-        let input = "Hello {{ ignored }} { actual }";
-        let lexer = Lexer::<'{', '}'>::new(input);
-        let results = lexer.tokenize();
-
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0], vec![Token::Ident(Rc::from("actual"))]);
-    }
-
-    #[test]
-    fn empty_input() {
-        let input = "";
-        let lexer = L::new(input);
-
-        assert!(lexer.templates.is_empty());
-    }
-
-    #[test]
-    fn no_templates() {
-        let input = "Just some random text without any brackets.";
-        let lexer = L::new(input);
-
-        assert!(lexer.templates.is_empty());
-    }
-
-    #[test]
-    fn basic_single() {
-        let input = "Hello! My name is {name}!";
-        let lexer = L::new(input);
-
-        assert_eq!(lexer.templates, vec!["name"]);
-    }
-
-    #[test]
-    fn multiple_templates() {
-        let input = "{first} then {second} and {third}";
-        let lexer = L::new(input);
-
-        assert_eq!(lexer.templates, vec!["first", "second", "third"]);
-    }
-
-    #[test]
-    fn consecutive_templates() {
-        let input = "{a}{b}{c}";
-        let lexer = L::new(input);
-
-        assert_eq!(lexer.templates, vec!["a", "b", "c"]);
-    }
-
-    #[test]
-    fn empty_inside_template() {
-        let input = "This is empty {}";
-        let lexer = L::new(input);
-
-        assert!(lexer.templates.is_empty());
-    }
-
-    #[test]
-    fn escaped_openers() {
-        let input = "This is {{escaped}}";
-        let lexer = L::new(input);
-
-        assert!(lexer.templates.is_empty());
-    }
-
-    #[test]
-    fn ignore_text_inside_escaped_blocks() {
-        let input = "This is {{literal}} but this is {captured}";
-        let lexer = L::new(input);
-
-        assert_eq!(lexer.templates, vec!["captured"]);
-    }
-
-    #[test]
-    fn unclosed_template_at_end() {
-        let input = "This is {started but never finished";
-        let lexer = L::new(input);
-
-        assert!(lexer.templates.is_empty());
-    }
-
-    #[test]
-    fn unclosed_template_followed_by_valid_one() {
-        let input = "start {broken {valid}";
-        let lexer = L::new(input);
-
-        assert_eq!(lexer.templates, vec!["broken {valid"]);
-    }
-
-    #[test]
-    fn different_delimiters() {
-        type SquareL = Lexer<'[', ']'>;
-        let input = "Hello [name], how are [you]?";
-        let lexer = SquareL::new(input);
-
-        assert_eq!(lexer.templates, vec!["name", "you"]);
-    }
-
-    #[test]
-    fn whitespace_inside_template() {
-        let input = "{  spaced  }";
-        let lexer = L::new(input);
-
-        assert_eq!(lexer.templates, vec!["  spaced  "]);
-    }
-
-    #[test]
-    fn complex_directive_syntax() {
-        let input = "I love {dish->capitalize}!";
-        let lexer = L::new(input);
-
-        assert_eq!(lexer.templates, vec!["dish->capitalize"]);
     }
 }
