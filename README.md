@@ -1,4 +1,4 @@
-# Figura
+# Figura - Lightweight Template Engine for Rust
 
 ```
 .---------------.
@@ -11,9 +11,6 @@
 |        |     ||
 '---------------'
 ```
-
-
-A lightweight template engine for Rust
 
 ## Features
 
