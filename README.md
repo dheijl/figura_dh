@@ -1,12 +1,4 @@
-<table>
-<tr>
-<td width="70%">
-
 # Figura
-## Lightweight Template Engine for Rust
-
-</td>
-<td width="30%">
 
 ```
 .---------------.
@@ -20,9 +12,8 @@
 '---------------'
 ```
 
-</td>
-</tr>
-</table>
+
+A lightweight template engine for Rust
 
 ## Features
 
