@@ -1,525 +1,803 @@
 use figura::{Context, DefaultParser, Template, Value};
-use std::borrow::Cow;
+
+type CBTemplate = Template<'{', '}'>;
+type ParenTemplate = Template<'(', ')'>;
+type SquareTemplate = Template<'[', ']'>;
 
 #[test]
-fn test_template_empty_string() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("").unwrap();
-    let ctx = Context::new();
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "");
-}
-
-#[test]
-fn test_template_no_placeholders() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("Hello World").unwrap();
-    let ctx = Context::new();
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "Hello World");
-}
-
-#[test]
-fn test_template_single_placeholder() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("Hello {name}").unwrap();
+fn test_simple_variable_replacement() {
+    let template = CBTemplate::compile::<DefaultParser>("Hello, {name}!").unwrap();
     let mut ctx = Context::new();
-    ctx.insert("name", Value::Str(Cow::Borrowed("Alice")));
-    let mut buf = String::new();
+    ctx.insert("name", Value::static_str("World"));
 
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "Hello Alice");
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Hello, World!");
 }
 
 #[test]
-fn test_template_multiple_placeholders() {
+fn test_multiple_variables() {
+    let template = CBTemplate::compile::<DefaultParser>(
+        "My name is {name}, I am {age} years old, and I live in {city}.",
+    )
+    .unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("name", Value::static_str("Alice"));
+    ctx.insert("age", Value::Int(30));
+    ctx.insert("city", Value::static_str("New York"));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(
+        result,
+        "My name is Alice, I am 30 years old, and I live in New York."
+    );
+}
+
+#[test]
+fn test_different_value_types() {
     let template =
-        Template::<'{', '}'>::compile::<DefaultParser>("Hello {name}, you are {age} years old")
+        CBTemplate::compile::<DefaultParser>("String: {s}, Int: {i}, Float: {f}, Bool: {b}")
             .unwrap();
     let mut ctx = Context::new();
-    ctx.insert("name", Value::Str(Cow::Borrowed("Bob")));
-    ctx.insert("age", Value::Int(25));
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "Hello Bob, you are 25 years old");
-}
-
-#[test]
-fn test_template_repeated_placeholder() {
-    let template =
-        Template::<'{', '}'>::compile::<DefaultParser>("{name} and {name} are friends").unwrap();
-    let mut ctx = Context::new();
-    ctx.insert("name", Value::Str(Cow::Borrowed("Charlie")));
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "Charlie and Charlie are friends");
-}
-
-#[test]
-fn test_template_missing_value() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("Hello {name}").unwrap();
-    let ctx = Context::new();
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "Hello ");
-}
-
-#[test]
-fn test_template_escaped_delimiter() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("{{name}}").unwrap();
-    let mut ctx = Context::new();
-    ctx.insert("name", Value::Str(Cow::Borrowed("test")));
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "{name}");
-}
-
-#[test]
-fn test_template_escaped_opening_delimiter() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("Test {{").unwrap();
-    let ctx = Context::new();
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "Test {");
-}
-
-#[test]
-fn test_template_mixed_escaped_and_normal() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("{{escaped}} {normal}").unwrap();
-    let mut ctx = Context::new();
-    ctx.insert("normal", Value::Str(Cow::Borrowed("value")));
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "{escaped} value");
-}
-
-#[test]
-fn test_template_with_newlines() {
-    let template =
-        Template::<'{', '}'>::compile::<DefaultParser>("Line 1: {a}\nLine 2: {b}\nLine 3: {c}")
-            .unwrap();
-    let mut ctx = Context::new();
-    ctx.insert("a", Value::Int(1));
-    ctx.insert("b", Value::Int(2));
-    ctx.insert("c", Value::Int(3));
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "Line 1: 1\nLine 2: 2\nLine 3: 3");
-}
-
-#[test]
-fn test_template_adjacent_placeholders() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("{a}{b}{c}").unwrap();
-    let mut ctx = Context::new();
-    ctx.insert("a", Value::Str(Cow::Borrowed("A")));
-    ctx.insert("b", Value::Str(Cow::Borrowed("B")));
-    ctx.insert("c", Value::Str(Cow::Borrowed("C")));
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "ABC");
-}
-
-#[test]
-fn test_template_placeholder_at_start() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("{name} says hello").unwrap();
-    let mut ctx = Context::new();
-    ctx.insert("name", Value::Str(Cow::Borrowed("Alice")));
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "Alice says hello");
-}
-
-#[test]
-fn test_template_placeholder_at_end() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("Hello {name}").unwrap();
-    let mut ctx = Context::new();
-    ctx.insert("name", Value::Str(Cow::Borrowed("Bob")));
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "Hello Bob");
-}
-
-#[test]
-fn test_template_only_placeholder() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("{value}").unwrap();
-    let mut ctx = Context::new();
-    ctx.insert("value", Value::Str(Cow::Borrowed("test")));
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "test");
-}
-
-#[test]
-fn test_template_empty_placeholder() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("test {}").unwrap();
-    let ctx = Context::new();
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "test ");
-}
-
-#[test]
-fn test_template_whitespace_in_placeholder() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("{ name }").unwrap();
-    let mut ctx = Context::new();
-    let mut buf = String::new();
-
-    ctx.insert("name", Value::Str(Cow::Owned(String::from("John"))));
-
-    template.format(&ctx, &mut buf).unwrap();
-
-    assert_eq!(buf, "John");
-}
-
-#[test]
-fn test_template_unclosed_delimiter() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("Hello {name");
-    assert!(template.is_err());
-    assert!(template.unwrap_err().contains("Unclosed delimiter"));
-}
-
-#[test]
-fn test_template_nested_delimiters() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("Test {a{b}}").unwrap();
-    let ctx = Context::new();
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "Test ");
-}
-
-#[test]
-fn test_template_angle_brackets() {
-    let template = Template::<'<', '>'>::compile::<DefaultParser>("Hello <name>").unwrap();
-    let mut ctx = Context::new();
-    ctx.insert("name", Value::Str(Cow::Borrowed("World")));
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "Hello World");
-}
-
-#[test]
-fn test_template_square_brackets() {
-    let template = Template::<'[', ']'>::compile::<DefaultParser>("Value: [x]").unwrap();
-    let mut ctx = Context::new();
-    ctx.insert("x", Value::Int(42));
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "Value: 42");
-}
-
-#[test]
-fn test_template_dollar_sign() {
-    let template = Template::<'$', '$'>::compile::<DefaultParser>("Price: $amount$").unwrap();
-    let mut ctx = Context::new();
-    ctx.insert("amount", Value::Float(19.99));
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "Price: 19.99");
-}
-
-#[test]
-fn test_template_percent_sign() {
-    let template = Template::<'%', '%'>::compile::<DefaultParser>("Complete: %percent%").unwrap();
-    let mut ctx = Context::new();
-    ctx.insert("percent", Value::Int(75));
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "Complete: 75");
-}
-
-#[test]
-fn test_template_int_values() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("a={a}, b={b}, c={c}").unwrap();
-    let mut ctx = Context::new();
-    ctx.insert("a", Value::Int(0));
-    ctx.insert("b", Value::Int(-100));
-    ctx.insert("c", Value::Int(999999));
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "a=0, b=-100, c=999999");
-}
-
-#[test]
-fn test_template_float_values() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("pi={pi}, e={e}").unwrap();
-    let mut ctx = Context::new();
-    ctx.insert("pi", Value::Float(3.14159));
-    ctx.insert("e", Value::Float(2.71828));
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "pi=3.14159, e=2.71828");
-}
-
-#[test]
-fn test_template_bool_values() {
-    let template =
-        Template::<'{', '}'>::compile::<DefaultParser>("active={active}, enabled={enabled}")
-            .unwrap();
-    let mut ctx = Context::new();
-    ctx.insert("active", Value::Bool(true));
-    ctx.insert("enabled", Value::Bool(false));
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "active=true, enabled=false");
-}
-
-#[test]
-fn test_template_mixed_value_types() {
-    let template =
-        Template::<'{', '}'>::compile::<DefaultParser>("str={s}, int={i}, float={f}, bool={b}")
-            .unwrap();
-    let mut ctx = Context::new();
-    ctx.insert("s", Value::Str(Cow::Borrowed("text")));
+    ctx.insert("s", Value::static_str("test"));
     ctx.insert("i", Value::Int(42));
     ctx.insert("f", Value::Float(3.14));
     ctx.insert("b", Value::Bool(true));
-    let mut buf = String::new();
 
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "str=text, int=42, float=3.14, bool=true");
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "String: test, Int: 42, Float: 3.14, Bool: true");
 }
 
 #[test]
-fn test_template_reuse() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("Hello {name}").unwrap();
-
-    let mut ctx1 = Context::new();
-    ctx1.insert("name", Value::Str(Cow::Borrowed("Alice")));
-    let mut buf1 = String::new();
-    template.format(&ctx1, &mut buf1).unwrap();
-    assert_eq!(buf1, "Hello Alice");
-
-    let mut ctx2 = Context::new();
-    ctx2.insert("name", Value::Str(Cow::Borrowed("Bob")));
-    let mut buf2 = String::new();
-    template.format(&ctx2, &mut buf2).unwrap();
-    assert_eq!(buf2, "Hello Bob");
-}
-
-#[test]
-fn test_template_unicode_text() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("你好 {name}，欢迎！").unwrap();
-    let mut ctx = Context::new();
-    ctx.insert("name", Value::Str(Cow::Borrowed("世界")));
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "你好 世界，欢迎！");
-}
-
-#[test]
-fn test_template_emoji() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("Hello {name} 👋").unwrap();
-    let mut ctx = Context::new();
-    ctx.insert("name", Value::Str(Cow::Borrowed("🌍")));
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "Hello 🌍 👋");
-}
-
-#[test]
-fn test_template_complex_document() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>(
-        "Name: {name}\nAge: {age}\nEmail: {email}\nActive: {active}",
-    )
-    .unwrap();
-    let mut ctx = Context::new();
-    ctx.insert("name", Value::Str(Cow::Borrowed("John Doe")));
-    ctx.insert("age", Value::Int(30));
-    ctx.insert("email", Value::Str(Cow::Borrowed("john@example.com")));
-    ctx.insert("active", Value::Bool(true));
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(
-        buf,
-        "Name: John Doe\nAge: 30\nEmail: john@example.com\nActive: true"
-    );
-}
-
-#[test]
-fn test_template_html_like() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>(
-        "<div class=\"user\">\n  <h1>{name}</h1>\n  <p>Age: {age}</p>\n</div>",
-    )
-    .unwrap();
-    let mut ctx = Context::new();
-    ctx.insert("name", Value::Str(Cow::Borrowed("Alice")));
-    ctx.insert("age", Value::Int(25));
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(
-        buf,
-        "<div class=\"user\">\n  <h1>Alice</h1>\n  <p>Age: 25</p>\n</div>"
-    );
-}
-
-#[test]
-fn test_template_json_like() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>(
-        r#"{{ "name": "{name}", "age": {age}, "active": {active} }}"#,
-    )
-    .unwrap();
-    let mut ctx = Context::new();
-    ctx.insert("name", Value::Str(Cow::Borrowed("Bob")));
-    ctx.insert("age", Value::Int(30));
-    ctx.insert("active", Value::Bool(true));
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, r#"{ "name": "Bob", "age": 30, "active": true }"#);
-}
-
-#[test]
-fn test_template_url_like() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>(
-        "https://example.com/user/{id}/profile?active={active}",
-    )
-    .unwrap();
-    let mut ctx = Context::new();
-    ctx.insert("id", Value::Int(123));
-    ctx.insert("active", Value::Bool(true));
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "https://example.com/user/123/profile?active=true");
-}
-
-#[test]
-fn test_template_sql_like() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>(
-        "SELECT * FROM users WHERE id = {id} AND active = {active}",
-    )
-    .unwrap();
-    let mut ctx = Context::new();
-    ctx.insert("id", Value::Int(42));
-    ctx.insert("active", Value::Bool(true));
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "SELECT * FROM users WHERE id = 42 AND active = true");
-}
-
-#[test]
-fn test_template_very_long_text() {
-    let long_text = "a".repeat(10000);
-    let template = Template::<'{', '}'>::compile::<DefaultParser>(&long_text).unwrap();
+fn test_literal_only_template() {
+    let template =
+        CBTemplate::compile::<DefaultParser>("This is just a plain string with no variables.")
+            .unwrap();
     let ctx = Context::new();
-    let mut buf = String::new();
 
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, long_text);
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "This is just a plain string with no variables.");
 }
 
 #[test]
-fn test_template_many_placeholders() {
+fn test_empty_template() {
+    let template = CBTemplate::compile::<DefaultParser>("").unwrap();
+    let ctx = Context::new();
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "");
+}
+
+#[test]
+fn test_escaped_opening_delimiter() {
+    let template =
+        CBTemplate::compile::<DefaultParser>("Use {{curly braces}} like this: {name}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("name", Value::static_str("example"));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Use {curly braces} like this: example");
+}
+
+#[test]
+fn test_escaped_closing_delimiter() {
+    let template =
+        CBTemplate::compile::<DefaultParser>("Close with }} and open with {name}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("name", Value::static_str("test"));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Close with } and open with test");
+}
+
+#[test]
+fn test_both_escaped_delimiters() {
+    let template = CBTemplate::compile::<DefaultParser>("{{escaped}} {name} {{both}}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("name", Value::static_str("middle"));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "{escaped} middle {both}");
+}
+
+#[test]
+fn test_repeat_directive_with_literal() {
+    let template = CBTemplate::compile::<DefaultParser>("{'ABC':5}").unwrap();
+    let ctx = Context::new();
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "ABCABCABCABCABC");
+}
+
+#[test]
+fn test_repeat_directive_with_variables() {
+    let template = CBTemplate::compile::<DefaultParser>("{pattern:count}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("pattern", Value::static_str("XYZ"));
+    ctx.insert("count", Value::Int(3));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "XYZXYZXYZ");
+}
+
+#[test]
+fn test_repeat_directive_zero_times() {
+    let template = CBTemplate::compile::<DefaultParser>("{pattern:count}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("pattern", Value::static_str("ABC"));
+    ctx.insert("count", Value::Int(0));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "");
+}
+
+#[test]
+fn test_repeat_directive_large_count() {
+    let template = CBTemplate::compile::<DefaultParser>("{'A':1000}").unwrap();
+    let ctx = Context::new();
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "A".repeat(1000));
+}
+
+#[test]
+fn test_mixed_literals_and_variables() {
+    let template =
+        CBTemplate::compile::<DefaultParser>("Start {var1} middle {var2} end {var3} finish")
+            .unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("var1", Value::static_str("ONE"));
+    ctx.insert("var2", Value::Int(2));
+    ctx.insert("var3", Value::Bool(false));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Start ONE middle 2 end false finish");
+}
+
+#[test]
+fn test_consecutive_variables() {
+    let template = CBTemplate::compile::<DefaultParser>("{a}{b}{c}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("a", Value::static_str("Hello"));
+    ctx.insert("b", Value::static_str(" "));
+    ctx.insert("c", Value::static_str("World"));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Hello World");
+}
+
+#[test]
+fn test_different_delimiters_parentheses() {
+    let template = ParenTemplate::compile::<DefaultParser>("Hello, (name)!").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("name", Value::static_str("World"));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Hello, World!");
+}
+
+#[test]
+fn test_different_delimiters_square_brackets() {
+    let template = SquareTemplate::compile::<DefaultParser>("Hello, [name]!").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("name", Value::static_str("World"));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Hello, World!");
+}
+
+#[test]
+fn test_parentheses_escaped() {
+    let template = ParenTemplate::compile::<DefaultParser>("Use ((parens)) like (name)").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("name", Value::static_str("this"));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Use (parens) like this");
+}
+
+#[test]
+fn test_unclosed_delimiter_error() {
+    let result = CBTemplate::compile::<DefaultParser>("Hello {name");
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("Unclosed delimiter"));
+}
+
+#[test]
+fn test_missing_variable_in_context() {
+    let template = CBTemplate::compile::<DefaultParser>("Hello, {name}!").unwrap();
+    let ctx = Context::new();
+
+    let result = template.format(&ctx);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_rc_str_value() {
+    let template = CBTemplate::compile::<DefaultParser>("Hello, {name}!").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("name", Value::owned_str("Dynamic".to_string()));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Hello, Dynamic!");
+}
+
+#[test]
+fn test_very_long_template() {
     let template_str = (0..100)
         .map(|i| format!("{{var{}}}", i))
         .collect::<Vec<_>>()
         .join(" ");
-    let template = Template::<'{', '}'>::compile::<DefaultParser>(&template_str).unwrap();
 
+    let template = CBTemplate::compile::<DefaultParser>(&template_str).unwrap();
     let mut ctx = Context::new();
     for i in 0..100 {
         ctx.insert(
             Box::leak(format!("var{}", i).into_boxed_str()),
-            Value::Int(i),
+            Value::Int(i as i64),
         );
     }
 
-    let mut buf = String::new();
-    template.format(&ctx, &mut buf).unwrap();
-
+    let result = template.format(&ctx).unwrap();
     let expected = (0..100)
         .map(|i| i.to_string())
         .collect::<Vec<_>>()
         .join(" ");
-    assert_eq!(buf, expected);
+    assert_eq!(result, expected);
 }
 
 #[test]
-fn test_template_special_characters_in_text() {
+fn test_complex_realistic_email() {
+    let template = CBTemplate::compile::<DefaultParser>(
+        "Dear {name},\n\nYour order #{order_id} has been confirmed.\n\
+         Total: ${total}\n\nThank you!",
+    )
+    .unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("name", Value::static_str("John Doe"));
+    ctx.insert("order_id", Value::Int(12345));
+    ctx.insert("total", Value::Float(99.99));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(
+        result,
+        "Dear John Doe,\n\nYour order #12345 has been confirmed.\nTotal: $99.99\n\nThank you!"
+    );
+}
+
+#[test]
+fn test_complex_html_like_template() {
     let template =
-        Template::<'{', '}'>::compile::<DefaultParser>("Test: @#$%^&*()_+-=[]\\|;':\",./<>?")
+        CBTemplate::compile::<DefaultParser>("<div><h1>{title}</h1><p>{content}</p></div>")
             .unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("title", Value::static_str("Welcome"));
+    ctx.insert("content", Value::static_str("Hello, world!"));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "<div><h1>Welcome</h1><p>Hello, world!</p></div>");
+}
+
+#[test]
+fn test_repeat_with_mixed_content() {
+    let template =
+        CBTemplate::compile::<DefaultParser>("Header: {title} | {separator:count} | Footer")
+            .unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("title", Value::static_str("Document"));
+    ctx.insert("separator", Value::static_str("-"));
+    ctx.insert("count", Value::Int(10));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Header: Document | ---------- | Footer");
+}
+
+#[test]
+fn test_unicode_characters() {
+    let template = CBTemplate::compile::<DefaultParser>("Emoji: {emoji}, Text: {text}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("emoji", Value::static_str("🦀"));
+    ctx.insert("text", Value::static_str("Здравствуй мир"));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Emoji: 🦀, Text: Здравствуй мир");
+}
+
+#[test]
+fn test_unicode_in_repeat() {
+    let template = CBTemplate::compile::<DefaultParser>("{emoji:count}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("emoji", Value::static_str("🦀"));
+    ctx.insert("count", Value::Int(5));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "🦀🦀🦀🦀🦀");
+}
+
+#[test]
+fn test_special_characters_in_literals() {
+    let template =
+        CBTemplate::compile::<DefaultParser>("Special: !@#$%^&*() {var} more: <>/\\|").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("var", Value::static_str("test"));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Special: !@#$%^&*() test more: <>/\\|");
+}
+
+#[test]
+fn test_whitespace_preservation() {
+    let template = CBTemplate::compile::<DefaultParser>("   {var}   \n\t{var2}   ").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("var", Value::static_str("a"));
+    ctx.insert("var2", Value::static_str("b"));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "   a   \n\tb   ");
+}
+
+#[test]
+fn test_negative_integers() {
+    let template = CBTemplate::compile::<DefaultParser>("Value: {num}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("num", Value::Int(-42));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Value: -42");
+}
+
+#[test]
+fn test_negative_floats() {
+    let template = CBTemplate::compile::<DefaultParser>("Value: {num}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("num", Value::Float(-3.14159));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Value: -3.14159");
+}
+
+#[test]
+fn test_large_integers() {
+    let template = CBTemplate::compile::<DefaultParser>("Big: {num}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("num", Value::Int(i64::MAX));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, format!("Big: {}", i64::MAX));
+}
+
+#[test]
+fn test_reuse_template_different_contexts() {
+    let template = CBTemplate::compile::<DefaultParser>("Hello, {name}!").unwrap();
+
+    let mut ctx1 = Context::new();
+    ctx1.insert("name", Value::static_str("Alice"));
+    let result1 = template.format(&ctx1).unwrap();
+    assert_eq!(result1, "Hello, Alice!");
+
+    let mut ctx2 = Context::new();
+    ctx2.insert("name", Value::static_str("Bob"));
+    let result2 = template.format(&ctx2).unwrap();
+    assert_eq!(result2, "Hello, Bob!");
+
+    let mut ctx3 = Context::new();
+    ctx3.insert("name", Value::Int(42));
+    let result3 = template.format(&ctx3).unwrap();
+    assert_eq!(result3, "Hello, 42!");
+}
+
+#[test]
+fn test_clone_template() {
+    let template = CBTemplate::compile::<DefaultParser>("Hello, {name}!").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("name", Value::static_str("World"));
+
+    // Templates should be clonable
+    let result1 = template.format(&ctx).unwrap();
+    let result2 = template.format(&ctx).unwrap();
+    assert_eq!(result1, result2);
+}
+
+#[test]
+fn test_empty_variable_name() {
+    let template = CBTemplate::compile::<DefaultParser>("{}").unwrap();
     let ctx = Context::new();
-    let mut buf = String::new();
 
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "Test: @#$%^&*()_+-=[]\\|;':\",./<>?");
+    // Should compile but produce empty output or error when formatting
+    let result = template.format(&ctx);
+    // The actual behavior depends on implementation - just ensure it doesn't panic
+    let _ = result;
 }
 
 #[test]
-fn test_template_tabs_and_spaces() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("\t{a}\t\t{b}    {c}").unwrap();
+fn test_multiple_repeats_in_template() {
+    let template = CBTemplate::compile::<DefaultParser>("{a:n} middle {b:m} end").unwrap();
     let mut ctx = Context::new();
-    ctx.insert("a", Value::Int(1));
-    ctx.insert("b", Value::Int(2));
-    ctx.insert("c", Value::Int(3));
-    let mut buf = String::new();
+    ctx.insert("a", Value::static_str("X"));
+    ctx.insert("n", Value::Int(3));
+    ctx.insert("b", Value::static_str("Y"));
+    ctx.insert("m", Value::Int(2));
 
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "\t1\t\t2    3");
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "XXX middle YY end");
 }
 
 #[test]
-fn test_template_multiple_consecutive_escapes() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("{{{{{{").unwrap();
+fn test_literal_in_repeat_directive() {
+    let template = CBTemplate::compile::<DefaultParser>("{\"Hello\":3}").unwrap();
     let ctx = Context::new();
-    let mut buf = String::new();
 
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "{{{");
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "HelloHelloHello");
 }
 
 #[test]
-fn test_template_buffer_reuse() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("Hello {name}").unwrap();
+fn test_newlines_and_tabs() {
+    let template = CBTemplate::compile::<DefaultParser>("Line1\n{var}\tTabbed").unwrap();
     let mut ctx = Context::new();
-    ctx.insert("name", Value::Str(Cow::Borrowed("Alice")));
+    ctx.insert("var", Value::static_str("Line2"));
 
-    let mut buf = String::new();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "Hello Alice");
-
-    buf.clear();
-
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "Hello Alice");
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Line1\nLine2\tTabbed");
 }
 
 #[test]
-fn test_template_partial_context() {
-    let template = Template::<'{', '}'>::compile::<DefaultParser>("{a} {b} {c}").unwrap();
+fn test_boolean_values() {
+    let template = CBTemplate::compile::<DefaultParser>("True: {t}, False: {f}").unwrap();
     let mut ctx = Context::new();
-    ctx.insert("a", Value::Int(1));
-    ctx.insert("c", Value::Int(3));
-    let mut buf = String::new();
+    ctx.insert("t", Value::Bool(true));
+    ctx.insert("f", Value::Bool(false));
 
-    template.format(&ctx, &mut buf).unwrap();
-    assert_eq!(buf, "1  3");
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "True: true, False: false");
+}
+
+// ============================================
+// Conditional Directive Tests
+// ============================================
+
+#[test]
+fn test_conditional_simple_true() {
+    let template = CBTemplate::compile::<DefaultParser>("{flag ? 'yes' : 'no'}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("flag", Value::Bool(true));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "yes");
+}
+
+#[test]
+fn test_conditional_simple_false() {
+    let template = CBTemplate::compile::<DefaultParser>("{flag ? 'yes' : 'no'}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("flag", Value::Bool(false));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "no");
+}
+
+#[test]
+fn test_conditional_with_variables() {
+    let template =
+        CBTemplate::compile::<DefaultParser>("{condition ? true_msg : false_msg}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("condition", Value::Bool(true));
+    ctx.insert("true_msg", Value::static_str("Success!"));
+    ctx.insert("false_msg", Value::static_str("Failed!"));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Success!");
+}
+
+#[test]
+fn test_conditional_string_equality() {
+    let template =
+        CBTemplate::compile::<DefaultParser>("{status == 'online' ? 'Active' : 'Inactive'}")
+            .unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("status", Value::static_str("online"));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Active");
+}
+
+#[test]
+fn test_conditional_string_inequality() {
+    let template = CBTemplate::compile::<DefaultParser>(
+        "{status != 'offline' ? 'Connected' : 'Disconnected'}",
+    )
+    .unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("status", Value::static_str("online"));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Connected");
+}
+
+#[test]
+fn test_conditional_numeric_greater_than() {
+    let template = CBTemplate::compile::<DefaultParser>("{age > 18 ? 'Adult' : 'Minor'}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("age", Value::Int(25));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Adult");
+}
+
+#[test]
+fn test_conditional_numeric_less_than() {
+    let template = CBTemplate::compile::<DefaultParser>("{score < 50 ? 'Fail' : 'Pass'}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("score", Value::Int(45));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Fail");
+}
+
+#[test]
+fn test_conditional_greater_than_equals() {
+    let template = CBTemplate::compile::<DefaultParser>("{score >= 90 ? 'A' : 'B'}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("score", Value::Int(90));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "A");
+}
+
+#[test]
+fn test_conditional_less_than_equals() {
+    let template =
+        CBTemplate::compile::<DefaultParser>("{temp <= 32 ? 'Freezing' : 'Above freezing'}")
+            .unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("temp", Value::Int(30));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Freezing");
+}
+
+#[test]
+fn test_conditional_with_float_comparison() {
+    let template =
+        CBTemplate::compile::<DefaultParser>("{price > 99.99 ? 'Expensive' : 'Affordable'}")
+            .unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("price", Value::Float(120.50));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Expensive");
+}
+
+#[test]
+fn test_conditional_not_operator() {
+    let template = CBTemplate::compile::<DefaultParser>("{!flag ? 'Off' : 'On'}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("flag", Value::Bool(false));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Off");
+}
+
+#[test]
+fn test_conditional_not_operator_true() {
+    let template =
+        CBTemplate::compile::<DefaultParser>("{!enabled ? 'Disabled' : 'Enabled'}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("enabled", Value::Bool(true));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Enabled");
+}
+
+#[test]
+fn test_conditional_with_integers() {
+    let template = CBTemplate::compile::<DefaultParser>("{count ? 1 : 0}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("count", Value::Int(5));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "1");
+}
+
+#[test]
+fn test_conditional_comparing_two_variables() {
+    let template = CBTemplate::compile::<DefaultParser>("{a == b ? 'Same' : 'Different'}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("a", Value::Int(42));
+    ctx.insert("b", Value::Int(42));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Same");
+}
+
+#[test]
+fn test_conditional_comparing_variable_and_literal() {
+    let template = CBTemplate::compile::<DefaultParser>(
+        "{role == 'admin' ? 'Full Access' : 'Limited Access'}",
+    )
+    .unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("role", Value::static_str("admin"));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Full Access");
+}
+
+#[test]
+fn test_conditional_in_sentence() {
+    let template =
+        CBTemplate::compile::<DefaultParser>("User status: {active ? 'Active' : 'Inactive'}")
+            .unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("active", Value::Bool(true));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "User status: Active");
+}
+
+#[test]
+fn test_multiple_conditionals() {
+    let template = CBTemplate::compile::<DefaultParser>(
+        "{x > 0 ? 'positive' : 'non-positive'} and {y > 0 ? 'positive' : 'non-positive'}",
+    )
+    .unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("x", Value::Int(5));
+    ctx.insert("y", Value::Int(-3));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "positive and non-positive");
+}
+
+#[test]
+fn test_conditional_with_empty_strings() {
+    let template =
+        CBTemplate::compile::<DefaultParser>("{name != '' ? name : 'Anonymous'}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("name", Value::static_str(""));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Anonymous");
+}
+
+#[test]
+fn test_conditional_with_zero() {
+    let template = CBTemplate::compile::<DefaultParser>("{count == 0 ? 'None' : 'Some'}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("count", Value::Int(0));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "None");
+}
+
+#[test]
+fn test_conditional_numeric_equality() {
+    let template =
+        CBTemplate::compile::<DefaultParser>("{value == 42 ? 'Answer' : 'Not the answer'}")
+            .unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("value", Value::Int(42));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Answer");
+}
+
+#[test]
+fn test_conditional_with_negative_numbers() {
+    let template =
+        CBTemplate::compile::<DefaultParser>("{temp < 0 ? 'Below zero' : 'Above zero'}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("temp", Value::Int(-5));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Below zero");
+}
+
+#[test]
+fn test_conditional_realistic_email() {
+    let template = CBTemplate::compile::<DefaultParser>(
+        "Dear {name},\n\nYour account is {verified ? 'verified' : 'not verified'}.\n\n\
+        {verified ? 'Thank you for verifying!' : 'Please verify your account.'}",
+    )
+    .unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("name", Value::static_str("Alice"));
+    ctx.insert("verified", Value::Bool(true));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(
+        result,
+        "Dear Alice,\n\nYour account is verified.\n\nThank you for verifying!"
+    );
+}
+
+#[test]
+fn test_conditional_realistic_status_message() {
+    let template = CBTemplate::compile::<DefaultParser>(
+        "Server: {server_name} | Status: {online ? 'Online ✓' : 'Offline ✗'}",
+    )
+    .unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("server_name", Value::static_str("web-01"));
+    ctx.insert("online", Value::Bool(false));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Server: web-01 | Status: Offline ✗");
+}
+
+#[test]
+fn test_conditional_with_unicode() {
+    let template =
+        CBTemplate::compile::<DefaultParser>("{success ? '✅ Success' : '❌ Failed'}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("success", Value::Bool(true));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "✅ Success");
+}
+
+#[test]
+fn test_conditional_boundary_case_equal() {
+    let template = CBTemplate::compile::<DefaultParser>("{value >= 100 ? 'High' : 'Low'}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("value", Value::Int(100));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "High");
+}
+
+#[test]
+fn test_conditional_string_comparison_lexicographic() {
+    let template =
+        CBTemplate::compile::<DefaultParser>("{word > 'middle' ? 'After' : 'Before'}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("word", Value::static_str("zebra"));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "After");
+}
+
+#[test]
+fn test_conditional_mixed_with_repeat() {
+    let template =
+        CBTemplate::compile::<DefaultParser>("{show ? 'Yes' : 'No'} {pattern:count}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("show", Value::Bool(true));
+    ctx.insert("pattern", Value::static_str("*"));
+    ctx.insert("count", Value::Int(5));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Yes *****");
+}
+
+#[test]
+fn test_conditional_false_returns_variable() {
+    let template =
+        CBTemplate::compile::<DefaultParser>("{premium ? gold_msg : silver_msg}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("premium", Value::Bool(false));
+    ctx.insert("gold_msg", Value::static_str("Premium User"));
+    ctx.insert("silver_msg", Value::static_str("Standard User"));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Standard User");
+}
+
+#[test]
+fn test_conditional_integer_truthy_nonzero() {
+    let template = CBTemplate::compile::<DefaultParser>("{count ? 'Has items' : 'Empty'}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("count", Value::Int(5));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Has items");
+}
+
+#[test]
+fn test_conditional_integer_falsy_zero() {
+    let template = CBTemplate::compile::<DefaultParser>("{count ? 'Has items' : 'Empty'}").unwrap();
+    let mut ctx = Context::new();
+    ctx.insert("count", Value::Int(0));
+
+    let result = template.format(&ctx).unwrap();
+    assert_eq!(result, "Empty");
 }

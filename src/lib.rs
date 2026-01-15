@@ -1,6 +1,45 @@
-#![warn(clippy::use_self)]
+//! # Figura
+//!
+//! Figura is a template engine for Rust that supports variable substitution,
+//! repeating patterns, and conditional logic with customizable delimiters.
+//!
+//! ## Features
+//!
+//! - **Variable substitution**: `{name}` - Replace with context values
+//! - **Repeating patterns**: `{pattern:count}` - Repeat a pattern N times
+//! - **Conditionals**: `{condition ? true_value : false_value}` - Ternary expressions
+//! - **Comparisons**: Support for `==`, `!=`, `>`, `<`, `>=`, `<=`
+//! - **Custom Logic**: You can implement custom logic using the `Logic` and `Parser` traits
+//! - **Custom delimiters**: Use any characters as open/close delimiters
+//! - **Zero-copy where possible**: Leverages `Cow` for efficiency
+//!
+//! ## Example
+//!
+//! ```rust
+//! use figura::{Template, Context, Value};
+//! use std::collections::HashMap;
+//!
+//! // Create a context with variables
+//! let mut ctx = HashMap::new();
+//! ctx.insert("name", Value::static_str("World"));
+//! ctx.insert("count", Value::Int(3));
+//!
+//! // Compile a template (using default '{' and '}' delimiters)
+//! let template = Template::<'{', '}'>::compile::<figura::DefaultParser>(
+//!     "Hello {name}! {'*':count}"
+//! ).unwrap();
+//!
+//! // Render the template
+//! let result = template.format(&ctx).unwrap();
+//! assert_eq!(result, "Hello World! ***");
+//! ```
 
+#![warn(clippy::use_self)]
+#![allow(clippy::should_implement_trait)]
+
+mod arg;
 mod directive;
+mod err;
 mod lexer;
 mod parser;
 mod traits;
@@ -8,63 +47,158 @@ mod traits;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fmt::{self, Write};
+use std::fmt::{self};
 
+pub use arg::*;
 pub use directive::*;
+pub use err::*;
 pub use lexer::*;
 pub use parser::*;
 
-use crate::traits::ToAstring;
-
+/// A runtime value that can be stored in the template context.
+///
+/// Values can be strings, integers, floats, or booleans. The type system
+/// automatically handles conversions where appropriate (e.g., converting
+/// integers to strings for display).
+///
+/// # Examples
+///
+/// ```rust
+/// use figura::Value;
+///
+/// let s = Value::static_str("hello");
+/// let i = Value::Int(42);
+/// let f = Value::Float(3.14);
+/// let b = Value::Bool(true);
+/// ```
 #[derive(Debug, Clone)]
-pub enum Value<'a> {
-    Str(Cow<'a, str>),
-    StaticStr(&'static str),
+pub enum Value {
+    /// A string value (can be borrowed or owned)
+    Str(Cow<'static, str>),
+    /// A 64-bit signed integer
     Int(i64),
+    /// A 64-bit floating point number
     Float(f64),
+    /// A boolean value
     Bool(bool),
 }
 
-impl<'a> Value<'a> {
-    pub fn write_to(&self, buf: &mut String) -> fmt::Result {
-        match self {
-            Self::Str(s) => write!(buf, "{}", s)?,
-            Self::StaticStr(s) => write!(buf, "{}", s)?,
-            Self::Int(n) => write!(buf, "{}", n)?,
-            Self::Float(n) => write!(buf, "{}", n)?,
-            Self::Bool(b) => write!(buf, "{}", b)?,
-        }
-
-        Ok(())
+impl Value {
+    /// Create a static string value (zero-cost)
+    pub fn static_str(s: &'static str) -> Self {
+        Self::Str(Cow::Borrowed(s))
     }
-}
 
-impl<'a> Value<'a> {
-    pub fn as_cow(&'a self) -> Cow<'a, str> {
+    /// Create an owned string value
+    pub fn owned_str(s: String) -> Self {
+        Self::Str(Cow::Owned(s))
+    }
+
+    /// Returns a human-readable name for the value's type.
+    ///
+    /// Used primarily in error messages to indicate type mismatches.
+    pub fn type_name(&self) -> &str {
         match self {
-            Self::Str(s) => Cow::Borrowed(s),
-            Self::StaticStr(s) => Cow::Borrowed(s),
-            Self::Int(v) => Cow::Owned(v.to_astring()),
-            Self::Float(v) => Cow::Owned(v.to_astring()),
-            Self::Bool(v) => Cow::Owned(v.to_string()),
+            Self::Str(_) => "string",
+            Self::Int(_) => "integer",
+            Self::Float(_) => "float",
+            Self::Bool(_) => "boolean",
         }
     }
 }
 
-pub type Context<'a> = HashMap<&'static str, Value<'a>>;
+/// The context passed to templates during rendering.
+///
+/// Maps variable names to their runtime values. Variable names must be
+/// static strings for zero-copy efficiency.
+///
+/// # Examples
+///
+/// ```rust
+/// use figura::{Context, Value};
+/// use std::collections::HashMap;
+///
+/// let mut ctx = HashMap::new();
+/// ctx.insert("user", Value::static_str("Alice"));
+/// ctx.insert("age", Value::Int(30));
+/// ```
+pub type Context = HashMap<&'static str, Value>;
 
-pub struct Template<'a, const O: char, const C: char> {
-    directives: Vec<Box<dyn Directive + 'a>>,
+/// A compiled template ready for rendering.
+///
+/// Templates are parameterized by two characters representing the opening (`O`)
+/// and closing (`C`) delimiters. Common choices are `{`/`}` or `<`/`>`.
+///
+/// Templates are compiled once and can be rendered multiple times with different
+/// contexts, making them efficient for repeated use.
+///
+/// # Type Parameters
+///
+/// * `O` - The opening delimiter character (e.g., `'{'`)
+/// * `C` - The closing delimiter character (e.g., `'}'`)
+///
+/// # Examples
+///
+/// ```rust
+/// use figura::{Template, DefaultParser, Context, Value};
+/// use std::collections::HashMap; ///
+/// // Using default delimiters
+/// let tmpl = Template::<'{', '}'>::compile::<DefaultParser>("Hello {name}!").unwrap();
+///
+/// let mut ctx = HashMap::new();
+/// ctx.insert("name", Value::static_str("World"));
+///
+/// assert_eq!(tmpl.format(&ctx).unwrap(), "Hello World!");
+/// ```
+pub struct Template<const O: char, const C: char> {
+    directives: Vec<Box<dyn Directive>>,
 }
 
-impl<'a, const C: char, const O: char> fmt::Debug for Template<'a, O, C> {
+impl<const C: char, const O: char> fmt::Debug for Template<O, C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Template<'{}', '{}'>", O, C)
     }
 }
 
-impl<'a, const O: char, const C: char> Template<'a, O, C> {
-    pub fn compile<P: Parser>(input: &'a str) -> Result<Self, String> {
+impl<const O: char, const C: char> Template<O, C> {
+    /// Compiles a template string into an executable template.
+    ///
+    /// The template is parsed according to the rules defined by the parser `P`.
+    /// The default parser supports:
+    /// - Variable substitution: `{name}`
+    /// - Repeating: `{pattern:count}`
+    /// - Conditionals: `{condition ? true_val : false_val}`
+    /// - Comparisons: `{a == b ? yes : no}`
+    ///
+    /// # Type Parameters
+    ///
+    /// * `P` - The parser implementation to use (typically `DefaultParser`)
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - The template string to compile
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Template)` - Successfully compiled template
+    /// * `Err(String)` - Error message if compilation failed
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Delimiters are unclosed
+    /// - Expression syntax is invalid
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use figura::{Template, DefaultParser};
+    ///
+    /// let tmpl = Template::<'{', '}'>::compile::<DefaultParser>(
+    ///     "Value: {x}"
+    /// ).unwrap();
+    /// ```
+    pub fn compile<P: Parser>(input: &str) -> Result<Self, String> {
         let mut directives: Vec<Box<dyn Directive>> = Vec::new();
         let mut cursor = 0;
         let mut chars = input.char_indices().peekable();
@@ -74,24 +208,24 @@ impl<'a, const O: char, const C: char> Template<'a, O, C> {
         while let Some((idx, ch)) = chars.next() {
             if ch == O {
                 // Handle escaped opening delimiter (e.g. "{{")
-                if let Some(&(_, next_char)) = chars.peek() {
-                    if next_char == O {
-                        if idx > cursor {
-                            directives.push(Box::new(LiteralDirective(Cow::Borrowed(
-                                &input[cursor..idx],
-                            ))));
-                        }
-
-                        directives.push(Box::new(LiteralDirective(Cow::Owned(O.to_string()))));
-                        chars.next();
-                        cursor = chars.peek().map(|(i, _)| *i).unwrap_or(input.len());
-                        continue;
+                if let Some(&(_, next_char)) = chars.peek()
+                    && next_char == O
+                {
+                    if idx > cursor {
+                        directives.push(Box::new(LiteralDirective(Cow::Owned(
+                            input[cursor..idx].to_string(),
+                        ))));
                     }
+
+                    directives.push(Box::new(LiteralDirective(Cow::Owned(O.to_string()))));
+                    chars.next();
+                    cursor = chars.peek().map(|(i, _)| *i).unwrap_or(input.len());
+                    continue;
                 }
 
                 if idx > cursor {
-                    directives.push(Box::new(LiteralDirective(Cow::Borrowed(
-                        &input[cursor..idx],
+                    directives.push(Box::new(LiteralDirective(Cow::Owned(
+                        input[cursor..idx].to_string(),
                     ))));
                 }
 
@@ -100,17 +234,15 @@ impl<'a, const O: char, const C: char> Template<'a, O, C> {
                 let mut end = start;
                 let mut found_close = false;
 
-                while let Some((c_idx, c_char)) = chars.next() {
+                for (c_idx, c_char) in chars.by_ref() {
                     if O == C {
                         if c_char == C {
                             depth -= 1;
                         }
-                    } else {
-                        if c_char == O {
-                            depth += 1;
-                        } else if c_char == C {
-                            depth -= 1;
-                        }
+                    } else if c_char == O {
+                        depth += 1;
+                    } else if c_char == C {
+                        depth -= 1;
                     }
 
                     if depth == 0 {
@@ -135,38 +267,76 @@ impl<'a, const O: char, const C: char> Template<'a, O, C> {
                     Some(directive) => directives.push(directive),
                     None => return Err(format!("Failed to parse expression: '{}'", content)),
                 }
-            } else if ch == C {
-                if let Some(&(_, next_char)) = chars.peek() {
-                    if next_char == C {
-                        if idx > cursor {
-                            directives.push(Box::new(LiteralDirective(Cow::Borrowed(
-                                &input[cursor..idx],
-                            ))));
-                        }
-
-                        directives.push(Box::new(LiteralDirective(Cow::Owned(C.to_string()))));
-                        chars.next();
-                        cursor = chars.peek().map(|(i, _)| *i).unwrap_or(input.len());
-                        continue;
-                    }
+            } else if ch == C
+                && let Some(&(_, next_char)) = chars.peek()
+                && next_char == C
+            {
+                if idx > cursor {
+                    directives.push(Box::new(LiteralDirective(Cow::Owned(
+                        input[cursor..idx].to_string(),
+                    ))));
                 }
+
+                directives.push(Box::new(LiteralDirective(Cow::Owned(C.to_string()))));
+                chars.next();
+                cursor = chars.peek().map(|(i, _)| *i).unwrap_or(input.len());
+                continue;
             }
         }
 
         if cursor < input.len() {
-            directives.push(Box::new(LiteralDirective(Cow::Borrowed(&input[cursor..]))));
+            directives.push(Box::new(LiteralDirective(Cow::Owned(
+                input[cursor..].to_string(),
+            ))));
         }
 
         Ok(Self { directives })
     }
 
-    pub fn format(&self, ctx: &Context, buf: &mut String) -> fmt::Result {
-        buf.reserve(self.directives.len() * 8);
+    /// Renders the template using the provided context.
+    ///
+    /// This method executes all directives in the template and concatenates their
+    /// results into a final string. It pre-allocates a reasonable capacity to minimize
+    /// allocations during rendering.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - A reference to the context containing variable values
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(String)` - The rendered template output
+    /// * `Err(DirectiveError)` - If any directive fails (e.g., missing variable, type mismatch)
+    ///
+    /// # Errors
+    ///
+    /// Returns a `DirectiveError` if:
+    /// - A referenced variable is not found in the context
+    /// - A variable has an incompatible type for the operation
+    /// - A literal value cannot be parsed as the required type
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use figura::{Template, DefaultParser, Context, Value};
+    /// use std::collections::HashMap;
+    ///
+    /// let tmpl = Template::<'{', '}'>::compile::<DefaultParser>("Hi {name}!").unwrap();
+    ///
+    /// let mut ctx = HashMap::new();
+    /// ctx.insert("name", Value::static_str("Alice"));
+    ///
+    /// let output = tmpl.format(&ctx).unwrap();
+    /// assert_eq!(output, "Hi Alice!");
+    /// ```
+    pub fn format(&self, ctx: &Context) -> Result<String, DirectiveError> {
+        let mut output = String::with_capacity(self.directives.len() * 8);
 
         for directive in &self.directives {
-            directive.format(ctx, buf)?;
+            let result = directive.exec(ctx)?;
+            output.push_str(&result);
         }
 
-        Ok(())
+        Ok(output)
     }
 }
