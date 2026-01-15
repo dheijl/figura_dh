@@ -28,7 +28,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-figura = "2.0.1"
+figura = "2.0.2"
 ```
 
 ## Quick Start
@@ -41,7 +41,7 @@ let mut ctx = Context::new();
 ctx.insert("name", Value::static_str("Alice"));
 ctx.insert("count", Value::Int(3));
 
-let template = Template::<'{', '}'>::compile::<DefaultParser>(
+let template = Template::<'{', '}'>::compile(
     "Hello {name}! Stars: {'★':count}"
 ).unwrap();
 
@@ -54,7 +54,7 @@ assert_eq!(output, "Hello Alice! Stars: ★★★");
 ### Variable Substitution
 
 ```rust
-let template = Template::<'{', '}'>::compile::<DefaultParser>(
+let template = Template::<'{', '}'>::compile(
     "User: {username}, Age: {age}"
 ).unwrap();
 
@@ -66,7 +66,7 @@ ctx.insert("age", Value::Int(25));
 ### Literals
 
 ```rust
-let template = Template::<'{', '}'>::compile::<DefaultParser>(
+let template = Template::<'{', '}'>::compile(
     "Message: {'Hello World'}"
 ).unwrap();
 // Output: "Message: Hello World"
@@ -75,7 +75,7 @@ let template = Template::<'{', '}'>::compile::<DefaultParser>(
 ### Pattern Repetition
 
 ```rust
-let template = Template::<'{', '}'>::compile::<DefaultParser>(
+let template = Template::<'{', '}'>::compile(
     "{'-':50}\n{title}\n{'-':50}"
 ).unwrap();
 
@@ -91,7 +91,7 @@ ctx.insert("title", Value::static_str("HEADER"));
 Simple boolean conditions:
 
 ```rust
-let template = Template::<'{', '}'>::compile::<DefaultParser>(
+let template = Template::<'{', '}'>::compile(
     "Status: {active ? 'Online' : 'Offline'}"
 ).unwrap();
 
@@ -102,7 +102,7 @@ ctx.insert("active", Value::Bool(true));
 With comparisons:
 
 ```rust
-let template = Template::<'{', '}'>::compile::<DefaultParser>(
+let template = Template::<'{', '}'>::compile(
     "Access: {age >= 18 ? 'Granted' : 'Denied'}"
 ).unwrap();
 
@@ -115,7 +115,7 @@ Supported operators: `==`, `!=`, `>`, `<`, `>=`, `<=`
 Logical NOT:
 
 ```rust
-let template = Template::<'{', '}'>::compile::<DefaultParser>(
+let template = Template::<'{', '}'>::compile(
     "{!enabled ? 'Disabled' : 'Enabled'}"
 ).unwrap();
 ```
@@ -123,7 +123,7 @@ let template = Template::<'{', '}'>::compile::<DefaultParser>(
 ### Escaped Delimiters
 
 ```rust
-let template = Template::<'{', '}'>::compile::<DefaultParser>(
+let template = Template::<'{', '}'>::compile(
     "Literal braces: {{not a variable}}"
 ).unwrap();
 // Output: "Literal braces: {not a variable}"
@@ -135,17 +135,17 @@ Use any characters as delimiters:
 
 ```rust
 // Angle brackets
-let template = Template::<'<', '>'>::compile::<DefaultParser>(
+let template = Template::<'<', '>'>::compile(
     "Hello <name>!"
 ).unwrap();
 
 // Square brackets
-let template = Template::<'[', ']'>::compile::<DefaultParser>(
+let template = Template::<'[', ']'>::compile(
     "Value: [count]"
 ).unwrap();
 
 // Same character for both
-let template = Template::<'%', '%'>::compile::<DefaultParser>(
+let template = Template::<'%', '%'>::compile(
     "Data: %value%"
 ).unwrap();
 ```
@@ -205,7 +205,7 @@ impl Directive for AddDirective {
 }
 
 // Use custom parser
-let template = Template::<'{', '}'>::compile::<MathParser>(
+let template = Template::<'{', '}'>::compile_with_parser::<MathParser>(
     "{x + y}"
 ).unwrap();
 ```
