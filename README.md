@@ -28,7 +28,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-figura = "2.0.2"
+figura = "2.0.3"
 ```
 
 ## Quick Start

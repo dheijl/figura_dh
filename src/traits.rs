@@ -10,6 +10,6 @@ impl ToAstring for i64 {
 
 impl ToAstring for f64 {
     fn to_astring(self) -> String {
-        ryu::Buffer::new().format(self).to_owned()
+        zmij::Buffer::new().format(self).to_owned()
     }
 }

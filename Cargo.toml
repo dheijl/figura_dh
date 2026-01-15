@@ -1,6 +1,6 @@
 [package]
 name = "figura"
-version = "2.0.2"
+version = "2.0.3"
 edition = "2024"
 authors = ["Saverio Scagnoli <svscagn@gmail.com>"]
 description = "A flexible string template formatting crate"
@@ -19,8 +19,8 @@ doctest = false
 
 [dependencies]
 itoa = "1.0.17"
-ryu = "1.0.22"
 thiserror = "2.0.17"
+zmij = "1.0.14"
 
 
 [dev-dependencies]

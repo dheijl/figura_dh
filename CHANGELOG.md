@@ -9,9 +9,12 @@ v1.3.3 - December 14 2025
 - Improve performance when using a lot of numeric tokens by [dheijl](https://github.com/dheijl)
 - Implement clippy suggestions by [dheijl](https://github.com/dheijl)
 
-v2.0.0 - January 14 2026
+v2.0.0 - January 15 2026
 
 - Library rewriting with better separation of concerns
 - Removed arbitrary alignment support
 - Removed `SwitchDirective`
 - Template creation function changed from "parse" to "compile"
+
+V2.0.3 - January 15
+- Replace `ryu` with `zmij`
