@@ -105,3 +105,12 @@ pub enum DirectiveError {
         message: String,
     },
 }
+
+#[derive(Debug, Error)]
+pub enum TemplateError {
+    #[error("Unclosed delimiter '{0}'")]
+    MissingDelimiter(char),
+
+    #[error("Failed to parse directive: {0}")]
+    DirectiveParsing(String),
+}

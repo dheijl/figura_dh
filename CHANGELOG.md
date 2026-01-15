@@ -14,3 +14,4 @@ v2.0.0 - January 14 2026
 - Library rewriting with better separation of concerns
 - Removed arbitrary alignment support
 - Removed `SwitchDirective`
+- Template creation function changed from "parse" to "compile"

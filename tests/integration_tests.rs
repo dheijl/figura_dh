@@ -1,4 +1,4 @@
-use figura::{Context, DefaultParser, Template, Value};
+use figura::{Context, Template, Value};
 
 type CBTemplate = Template<'{', '}'>;
 type ParenTemplate = Template<'(', ')'>;
@@ -6,7 +6,7 @@ type SquareTemplate = Template<'[', ']'>;
 
 #[test]
 fn test_simple_variable_replacement() {
-    let template = CBTemplate::compile::<DefaultParser>("Hello, {name}!").unwrap();
+    let template = CBTemplate::compile("Hello, {name}!").unwrap();
     let mut ctx = Context::new();
     ctx.insert("name", Value::static_str("World"));
 
@@ -16,10 +16,9 @@ fn test_simple_variable_replacement() {
 
 #[test]
 fn test_multiple_variables() {
-    let template = CBTemplate::compile::<DefaultParser>(
-        "My name is {name}, I am {age} years old, and I live in {city}.",
-    )
-    .unwrap();
+    let template =
+        CBTemplate::compile("My name is {name}, I am {age} years old, and I live in {city}.")
+            .unwrap();
     let mut ctx = Context::new();
     ctx.insert("name", Value::static_str("Alice"));
     ctx.insert("age", Value::Int(30));
@@ -34,9 +33,7 @@ fn test_multiple_variables() {
 
 #[test]
 fn test_different_value_types() {
-    let template =
-        CBTemplate::compile::<DefaultParser>("String: {s}, Int: {i}, Float: {f}, Bool: {b}")
-            .unwrap();
+    let template = CBTemplate::compile("String: {s}, Int: {i}, Float: {f}, Bool: {b}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("s", Value::static_str("test"));
     ctx.insert("i", Value::Int(42));
@@ -49,9 +46,7 @@ fn test_different_value_types() {
 
 #[test]
 fn test_literal_only_template() {
-    let template =
-        CBTemplate::compile::<DefaultParser>("This is just a plain string with no variables.")
-            .unwrap();
+    let template = CBTemplate::compile("This is just a plain string with no variables.").unwrap();
     let ctx = Context::new();
 
     let result = template.format(&ctx).unwrap();
@@ -60,7 +55,7 @@ fn test_literal_only_template() {
 
 #[test]
 fn test_empty_template() {
-    let template = CBTemplate::compile::<DefaultParser>("").unwrap();
+    let template = CBTemplate::compile("").unwrap();
     let ctx = Context::new();
 
     let result = template.format(&ctx).unwrap();
@@ -69,8 +64,7 @@ fn test_empty_template() {
 
 #[test]
 fn test_escaped_opening_delimiter() {
-    let template =
-        CBTemplate::compile::<DefaultParser>("Use {{curly braces}} like this: {name}").unwrap();
+    let template = CBTemplate::compile("Use {{curly braces}} like this: {name}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("name", Value::static_str("example"));
 
@@ -80,8 +74,7 @@ fn test_escaped_opening_delimiter() {
 
 #[test]
 fn test_escaped_closing_delimiter() {
-    let template =
-        CBTemplate::compile::<DefaultParser>("Close with }} and open with {name}").unwrap();
+    let template = CBTemplate::compile("Close with }} and open with {name}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("name", Value::static_str("test"));
 
@@ -91,7 +84,7 @@ fn test_escaped_closing_delimiter() {
 
 #[test]
 fn test_both_escaped_delimiters() {
-    let template = CBTemplate::compile::<DefaultParser>("{{escaped}} {name} {{both}}").unwrap();
+    let template = CBTemplate::compile("{{escaped}} {name} {{both}}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("name", Value::static_str("middle"));
 
@@ -101,7 +94,7 @@ fn test_both_escaped_delimiters() {
 
 #[test]
 fn test_repeat_directive_with_literal() {
-    let template = CBTemplate::compile::<DefaultParser>("{'ABC':5}").unwrap();
+    let template = CBTemplate::compile("{'ABC':5}").unwrap();
     let ctx = Context::new();
 
     let result = template.format(&ctx).unwrap();
@@ -110,7 +103,7 @@ fn test_repeat_directive_with_literal() {
 
 #[test]
 fn test_repeat_directive_with_variables() {
-    let template = CBTemplate::compile::<DefaultParser>("{pattern:count}").unwrap();
+    let template = CBTemplate::compile("{pattern:count}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("pattern", Value::static_str("XYZ"));
     ctx.insert("count", Value::Int(3));
@@ -121,7 +114,7 @@ fn test_repeat_directive_with_variables() {
 
 #[test]
 fn test_repeat_directive_zero_times() {
-    let template = CBTemplate::compile::<DefaultParser>("{pattern:count}").unwrap();
+    let template = CBTemplate::compile("{pattern:count}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("pattern", Value::static_str("ABC"));
     ctx.insert("count", Value::Int(0));
@@ -132,7 +125,7 @@ fn test_repeat_directive_zero_times() {
 
 #[test]
 fn test_repeat_directive_large_count() {
-    let template = CBTemplate::compile::<DefaultParser>("{'A':1000}").unwrap();
+    let template = CBTemplate::compile("{'A':1000}").unwrap();
     let ctx = Context::new();
 
     let result = template.format(&ctx).unwrap();
@@ -141,9 +134,7 @@ fn test_repeat_directive_large_count() {
 
 #[test]
 fn test_mixed_literals_and_variables() {
-    let template =
-        CBTemplate::compile::<DefaultParser>("Start {var1} middle {var2} end {var3} finish")
-            .unwrap();
+    let template = CBTemplate::compile("Start {var1} middle {var2} end {var3} finish").unwrap();
     let mut ctx = Context::new();
     ctx.insert("var1", Value::static_str("ONE"));
     ctx.insert("var2", Value::Int(2));
@@ -155,7 +146,7 @@ fn test_mixed_literals_and_variables() {
 
 #[test]
 fn test_consecutive_variables() {
-    let template = CBTemplate::compile::<DefaultParser>("{a}{b}{c}").unwrap();
+    let template = CBTemplate::compile("{a}{b}{c}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("a", Value::static_str("Hello"));
     ctx.insert("b", Value::static_str(" "));
@@ -167,7 +158,7 @@ fn test_consecutive_variables() {
 
 #[test]
 fn test_different_delimiters_parentheses() {
-    let template = ParenTemplate::compile::<DefaultParser>("Hello, (name)!").unwrap();
+    let template = ParenTemplate::compile("Hello, (name)!").unwrap();
     let mut ctx = Context::new();
     ctx.insert("name", Value::static_str("World"));
 
@@ -177,7 +168,7 @@ fn test_different_delimiters_parentheses() {
 
 #[test]
 fn test_different_delimiters_square_brackets() {
-    let template = SquareTemplate::compile::<DefaultParser>("Hello, [name]!").unwrap();
+    let template = SquareTemplate::compile("Hello, [name]!").unwrap();
     let mut ctx = Context::new();
     ctx.insert("name", Value::static_str("World"));
 
@@ -187,7 +178,7 @@ fn test_different_delimiters_square_brackets() {
 
 #[test]
 fn test_parentheses_escaped() {
-    let template = ParenTemplate::compile::<DefaultParser>("Use ((parens)) like (name)").unwrap();
+    let template = ParenTemplate::compile("Use ((parens)) like (name)").unwrap();
     let mut ctx = Context::new();
     ctx.insert("name", Value::static_str("this"));
 
@@ -197,14 +188,19 @@ fn test_parentheses_escaped() {
 
 #[test]
 fn test_unclosed_delimiter_error() {
-    let result = CBTemplate::compile::<DefaultParser>("Hello {name");
+    let result = CBTemplate::compile("Hello {name");
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Unclosed delimiter"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("Unclosed delimiter")
+    );
 }
 
 #[test]
 fn test_missing_variable_in_context() {
-    let template = CBTemplate::compile::<DefaultParser>("Hello, {name}!").unwrap();
+    let template = CBTemplate::compile("Hello, {name}!").unwrap();
     let ctx = Context::new();
 
     let result = template.format(&ctx);
@@ -213,7 +209,7 @@ fn test_missing_variable_in_context() {
 
 #[test]
 fn test_rc_str_value() {
-    let template = CBTemplate::compile::<DefaultParser>("Hello, {name}!").unwrap();
+    let template = CBTemplate::compile("Hello, {name}!").unwrap();
     let mut ctx = Context::new();
     ctx.insert("name", Value::owned_str("Dynamic".to_string()));
 
@@ -228,7 +224,7 @@ fn test_very_long_template() {
         .collect::<Vec<_>>()
         .join(" ");
 
-    let template = CBTemplate::compile::<DefaultParser>(&template_str).unwrap();
+    let template = CBTemplate::compile(&template_str).unwrap();
     let mut ctx = Context::new();
     for i in 0..100 {
         ctx.insert(
@@ -247,7 +243,7 @@ fn test_very_long_template() {
 
 #[test]
 fn test_complex_realistic_email() {
-    let template = CBTemplate::compile::<DefaultParser>(
+    let template = CBTemplate::compile(
         "Dear {name},\n\nYour order #{order_id} has been confirmed.\n\
          Total: ${total}\n\nThank you!",
     )
@@ -266,9 +262,7 @@ fn test_complex_realistic_email() {
 
 #[test]
 fn test_complex_html_like_template() {
-    let template =
-        CBTemplate::compile::<DefaultParser>("<div><h1>{title}</h1><p>{content}</p></div>")
-            .unwrap();
+    let template = CBTemplate::compile("<div><h1>{title}</h1><p>{content}</p></div>").unwrap();
     let mut ctx = Context::new();
     ctx.insert("title", Value::static_str("Welcome"));
     ctx.insert("content", Value::static_str("Hello, world!"));
@@ -279,9 +273,7 @@ fn test_complex_html_like_template() {
 
 #[test]
 fn test_repeat_with_mixed_content() {
-    let template =
-        CBTemplate::compile::<DefaultParser>("Header: {title} | {separator:count} | Footer")
-            .unwrap();
+    let template = CBTemplate::compile("Header: {title} | {separator:count} | Footer").unwrap();
     let mut ctx = Context::new();
     ctx.insert("title", Value::static_str("Document"));
     ctx.insert("separator", Value::static_str("-"));
@@ -293,7 +285,7 @@ fn test_repeat_with_mixed_content() {
 
 #[test]
 fn test_unicode_characters() {
-    let template = CBTemplate::compile::<DefaultParser>("Emoji: {emoji}, Text: {text}").unwrap();
+    let template = CBTemplate::compile("Emoji: {emoji}, Text: {text}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("emoji", Value::static_str("🦀"));
     ctx.insert("text", Value::static_str("Здравствуй мир"));
@@ -304,7 +296,7 @@ fn test_unicode_characters() {
 
 #[test]
 fn test_unicode_in_repeat() {
-    let template = CBTemplate::compile::<DefaultParser>("{emoji:count}").unwrap();
+    let template = CBTemplate::compile("{emoji:count}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("emoji", Value::static_str("🦀"));
     ctx.insert("count", Value::Int(5));
@@ -315,8 +307,7 @@ fn test_unicode_in_repeat() {
 
 #[test]
 fn test_special_characters_in_literals() {
-    let template =
-        CBTemplate::compile::<DefaultParser>("Special: !@#$%^&*() {var} more: <>/\\|").unwrap();
+    let template = CBTemplate::compile("Special: !@#$%^&*() {var} more: <>/\\|").unwrap();
     let mut ctx = Context::new();
     ctx.insert("var", Value::static_str("test"));
 
@@ -326,7 +317,7 @@ fn test_special_characters_in_literals() {
 
 #[test]
 fn test_whitespace_preservation() {
-    let template = CBTemplate::compile::<DefaultParser>("   {var}   \n\t{var2}   ").unwrap();
+    let template = CBTemplate::compile("   {var}   \n\t{var2}   ").unwrap();
     let mut ctx = Context::new();
     ctx.insert("var", Value::static_str("a"));
     ctx.insert("var2", Value::static_str("b"));
@@ -337,7 +328,7 @@ fn test_whitespace_preservation() {
 
 #[test]
 fn test_negative_integers() {
-    let template = CBTemplate::compile::<DefaultParser>("Value: {num}").unwrap();
+    let template = CBTemplate::compile("Value: {num}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("num", Value::Int(-42));
 
@@ -347,7 +338,7 @@ fn test_negative_integers() {
 
 #[test]
 fn test_negative_floats() {
-    let template = CBTemplate::compile::<DefaultParser>("Value: {num}").unwrap();
+    let template = CBTemplate::compile("Value: {num}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("num", Value::Float(-3.14159));
 
@@ -357,7 +348,7 @@ fn test_negative_floats() {
 
 #[test]
 fn test_large_integers() {
-    let template = CBTemplate::compile::<DefaultParser>("Big: {num}").unwrap();
+    let template = CBTemplate::compile("Big: {num}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("num", Value::Int(i64::MAX));
 
@@ -367,7 +358,7 @@ fn test_large_integers() {
 
 #[test]
 fn test_reuse_template_different_contexts() {
-    let template = CBTemplate::compile::<DefaultParser>("Hello, {name}!").unwrap();
+    let template = CBTemplate::compile("Hello, {name}!").unwrap();
 
     let mut ctx1 = Context::new();
     ctx1.insert("name", Value::static_str("Alice"));
@@ -387,7 +378,7 @@ fn test_reuse_template_different_contexts() {
 
 #[test]
 fn test_clone_template() {
-    let template = CBTemplate::compile::<DefaultParser>("Hello, {name}!").unwrap();
+    let template = CBTemplate::compile("Hello, {name}!").unwrap();
     let mut ctx = Context::new();
     ctx.insert("name", Value::static_str("World"));
 
@@ -399,7 +390,7 @@ fn test_clone_template() {
 
 #[test]
 fn test_empty_variable_name() {
-    let template = CBTemplate::compile::<DefaultParser>("{}").unwrap();
+    let template = CBTemplate::compile("{}").unwrap();
     let ctx = Context::new();
 
     // Should compile but produce empty output or error when formatting
@@ -410,7 +401,7 @@ fn test_empty_variable_name() {
 
 #[test]
 fn test_multiple_repeats_in_template() {
-    let template = CBTemplate::compile::<DefaultParser>("{a:n} middle {b:m} end").unwrap();
+    let template = CBTemplate::compile("{a:n} middle {b:m} end").unwrap();
     let mut ctx = Context::new();
     ctx.insert("a", Value::static_str("X"));
     ctx.insert("n", Value::Int(3));
@@ -423,7 +414,7 @@ fn test_multiple_repeats_in_template() {
 
 #[test]
 fn test_literal_in_repeat_directive() {
-    let template = CBTemplate::compile::<DefaultParser>("{\"Hello\":3}").unwrap();
+    let template = CBTemplate::compile("{\"Hello\":3}").unwrap();
     let ctx = Context::new();
 
     let result = template.format(&ctx).unwrap();
@@ -432,7 +423,7 @@ fn test_literal_in_repeat_directive() {
 
 #[test]
 fn test_newlines_and_tabs() {
-    let template = CBTemplate::compile::<DefaultParser>("Line1\n{var}\tTabbed").unwrap();
+    let template = CBTemplate::compile("Line1\n{var}\tTabbed").unwrap();
     let mut ctx = Context::new();
     ctx.insert("var", Value::static_str("Line2"));
 
@@ -442,7 +433,7 @@ fn test_newlines_and_tabs() {
 
 #[test]
 fn test_boolean_values() {
-    let template = CBTemplate::compile::<DefaultParser>("True: {t}, False: {f}").unwrap();
+    let template = CBTemplate::compile("True: {t}, False: {f}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("t", Value::Bool(true));
     ctx.insert("f", Value::Bool(false));
@@ -457,7 +448,7 @@ fn test_boolean_values() {
 
 #[test]
 fn test_conditional_simple_true() {
-    let template = CBTemplate::compile::<DefaultParser>("{flag ? 'yes' : 'no'}").unwrap();
+    let template = CBTemplate::compile("{flag ? 'yes' : 'no'}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("flag", Value::Bool(true));
 
@@ -467,7 +458,7 @@ fn test_conditional_simple_true() {
 
 #[test]
 fn test_conditional_simple_false() {
-    let template = CBTemplate::compile::<DefaultParser>("{flag ? 'yes' : 'no'}").unwrap();
+    let template = CBTemplate::compile("{flag ? 'yes' : 'no'}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("flag", Value::Bool(false));
 
@@ -477,8 +468,7 @@ fn test_conditional_simple_false() {
 
 #[test]
 fn test_conditional_with_variables() {
-    let template =
-        CBTemplate::compile::<DefaultParser>("{condition ? true_msg : false_msg}").unwrap();
+    let template = CBTemplate::compile("{condition ? true_msg : false_msg}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("condition", Value::Bool(true));
     ctx.insert("true_msg", Value::static_str("Success!"));
@@ -490,9 +480,7 @@ fn test_conditional_with_variables() {
 
 #[test]
 fn test_conditional_string_equality() {
-    let template =
-        CBTemplate::compile::<DefaultParser>("{status == 'online' ? 'Active' : 'Inactive'}")
-            .unwrap();
+    let template = CBTemplate::compile("{status == 'online' ? 'Active' : 'Inactive'}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("status", Value::static_str("online"));
 
@@ -502,10 +490,8 @@ fn test_conditional_string_equality() {
 
 #[test]
 fn test_conditional_string_inequality() {
-    let template = CBTemplate::compile::<DefaultParser>(
-        "{status != 'offline' ? 'Connected' : 'Disconnected'}",
-    )
-    .unwrap();
+    let template =
+        CBTemplate::compile("{status != 'offline' ? 'Connected' : 'Disconnected'}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("status", Value::static_str("online"));
 
@@ -515,7 +501,7 @@ fn test_conditional_string_inequality() {
 
 #[test]
 fn test_conditional_numeric_greater_than() {
-    let template = CBTemplate::compile::<DefaultParser>("{age > 18 ? 'Adult' : 'Minor'}").unwrap();
+    let template = CBTemplate::compile("{age > 18 ? 'Adult' : 'Minor'}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("age", Value::Int(25));
 
@@ -525,7 +511,7 @@ fn test_conditional_numeric_greater_than() {
 
 #[test]
 fn test_conditional_numeric_less_than() {
-    let template = CBTemplate::compile::<DefaultParser>("{score < 50 ? 'Fail' : 'Pass'}").unwrap();
+    let template = CBTemplate::compile("{score < 50 ? 'Fail' : 'Pass'}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("score", Value::Int(45));
 
@@ -535,7 +521,7 @@ fn test_conditional_numeric_less_than() {
 
 #[test]
 fn test_conditional_greater_than_equals() {
-    let template = CBTemplate::compile::<DefaultParser>("{score >= 90 ? 'A' : 'B'}").unwrap();
+    let template = CBTemplate::compile("{score >= 90 ? 'A' : 'B'}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("score", Value::Int(90));
 
@@ -545,9 +531,7 @@ fn test_conditional_greater_than_equals() {
 
 #[test]
 fn test_conditional_less_than_equals() {
-    let template =
-        CBTemplate::compile::<DefaultParser>("{temp <= 32 ? 'Freezing' : 'Above freezing'}")
-            .unwrap();
+    let template = CBTemplate::compile("{temp <= 32 ? 'Freezing' : 'Above freezing'}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("temp", Value::Int(30));
 
@@ -557,9 +541,7 @@ fn test_conditional_less_than_equals() {
 
 #[test]
 fn test_conditional_with_float_comparison() {
-    let template =
-        CBTemplate::compile::<DefaultParser>("{price > 99.99 ? 'Expensive' : 'Affordable'}")
-            .unwrap();
+    let template = CBTemplate::compile("{price > 99.99 ? 'Expensive' : 'Affordable'}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("price", Value::Float(120.50));
 
@@ -569,7 +551,7 @@ fn test_conditional_with_float_comparison() {
 
 #[test]
 fn test_conditional_not_operator() {
-    let template = CBTemplate::compile::<DefaultParser>("{!flag ? 'Off' : 'On'}").unwrap();
+    let template = CBTemplate::compile("{!flag ? 'Off' : 'On'}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("flag", Value::Bool(false));
 
@@ -579,8 +561,7 @@ fn test_conditional_not_operator() {
 
 #[test]
 fn test_conditional_not_operator_true() {
-    let template =
-        CBTemplate::compile::<DefaultParser>("{!enabled ? 'Disabled' : 'Enabled'}").unwrap();
+    let template = CBTemplate::compile("{!enabled ? 'Disabled' : 'Enabled'}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("enabled", Value::Bool(true));
 
@@ -590,7 +571,7 @@ fn test_conditional_not_operator_true() {
 
 #[test]
 fn test_conditional_with_integers() {
-    let template = CBTemplate::compile::<DefaultParser>("{count ? 1 : 0}").unwrap();
+    let template = CBTemplate::compile("{count ? 1 : 0}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("count", Value::Int(5));
 
@@ -600,7 +581,7 @@ fn test_conditional_with_integers() {
 
 #[test]
 fn test_conditional_comparing_two_variables() {
-    let template = CBTemplate::compile::<DefaultParser>("{a == b ? 'Same' : 'Different'}").unwrap();
+    let template = CBTemplate::compile("{a == b ? 'Same' : 'Different'}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("a", Value::Int(42));
     ctx.insert("b", Value::Int(42));
@@ -611,10 +592,8 @@ fn test_conditional_comparing_two_variables() {
 
 #[test]
 fn test_conditional_comparing_variable_and_literal() {
-    let template = CBTemplate::compile::<DefaultParser>(
-        "{role == 'admin' ? 'Full Access' : 'Limited Access'}",
-    )
-    .unwrap();
+    let template =
+        CBTemplate::compile("{role == 'admin' ? 'Full Access' : 'Limited Access'}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("role", Value::static_str("admin"));
 
@@ -624,9 +603,7 @@ fn test_conditional_comparing_variable_and_literal() {
 
 #[test]
 fn test_conditional_in_sentence() {
-    let template =
-        CBTemplate::compile::<DefaultParser>("User status: {active ? 'Active' : 'Inactive'}")
-            .unwrap();
+    let template = CBTemplate::compile("User status: {active ? 'Active' : 'Inactive'}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("active", Value::Bool(true));
 
@@ -636,7 +613,7 @@ fn test_conditional_in_sentence() {
 
 #[test]
 fn test_multiple_conditionals() {
-    let template = CBTemplate::compile::<DefaultParser>(
+    let template = CBTemplate::compile(
         "{x > 0 ? 'positive' : 'non-positive'} and {y > 0 ? 'positive' : 'non-positive'}",
     )
     .unwrap();
@@ -650,8 +627,7 @@ fn test_multiple_conditionals() {
 
 #[test]
 fn test_conditional_with_empty_strings() {
-    let template =
-        CBTemplate::compile::<DefaultParser>("{name != '' ? name : 'Anonymous'}").unwrap();
+    let template = CBTemplate::compile("{name != '' ? name : 'Anonymous'}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("name", Value::static_str(""));
 
@@ -661,7 +637,7 @@ fn test_conditional_with_empty_strings() {
 
 #[test]
 fn test_conditional_with_zero() {
-    let template = CBTemplate::compile::<DefaultParser>("{count == 0 ? 'None' : 'Some'}").unwrap();
+    let template = CBTemplate::compile("{count == 0 ? 'None' : 'Some'}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("count", Value::Int(0));
 
@@ -671,9 +647,7 @@ fn test_conditional_with_zero() {
 
 #[test]
 fn test_conditional_numeric_equality() {
-    let template =
-        CBTemplate::compile::<DefaultParser>("{value == 42 ? 'Answer' : 'Not the answer'}")
-            .unwrap();
+    let template = CBTemplate::compile("{value == 42 ? 'Answer' : 'Not the answer'}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("value", Value::Int(42));
 
@@ -683,8 +657,7 @@ fn test_conditional_numeric_equality() {
 
 #[test]
 fn test_conditional_with_negative_numbers() {
-    let template =
-        CBTemplate::compile::<DefaultParser>("{temp < 0 ? 'Below zero' : 'Above zero'}").unwrap();
+    let template = CBTemplate::compile("{temp < 0 ? 'Below zero' : 'Above zero'}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("temp", Value::Int(-5));
 
@@ -694,7 +667,7 @@ fn test_conditional_with_negative_numbers() {
 
 #[test]
 fn test_conditional_realistic_email() {
-    let template = CBTemplate::compile::<DefaultParser>(
+    let template = CBTemplate::compile(
         "Dear {name},\n\nYour account is {verified ? 'verified' : 'not verified'}.\n\n\
         {verified ? 'Thank you for verifying!' : 'Please verify your account.'}",
     )
@@ -712,10 +685,9 @@ fn test_conditional_realistic_email() {
 
 #[test]
 fn test_conditional_realistic_status_message() {
-    let template = CBTemplate::compile::<DefaultParser>(
-        "Server: {server_name} | Status: {online ? 'Online ✓' : 'Offline ✗'}",
-    )
-    .unwrap();
+    let template =
+        CBTemplate::compile("Server: {server_name} | Status: {online ? 'Online ✓' : 'Offline ✗'}")
+            .unwrap();
     let mut ctx = Context::new();
     ctx.insert("server_name", Value::static_str("web-01"));
     ctx.insert("online", Value::Bool(false));
@@ -726,8 +698,7 @@ fn test_conditional_realistic_status_message() {
 
 #[test]
 fn test_conditional_with_unicode() {
-    let template =
-        CBTemplate::compile::<DefaultParser>("{success ? '✅ Success' : '❌ Failed'}").unwrap();
+    let template = CBTemplate::compile("{success ? '✅ Success' : '❌ Failed'}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("success", Value::Bool(true));
 
@@ -737,7 +708,7 @@ fn test_conditional_with_unicode() {
 
 #[test]
 fn test_conditional_boundary_case_equal() {
-    let template = CBTemplate::compile::<DefaultParser>("{value >= 100 ? 'High' : 'Low'}").unwrap();
+    let template = CBTemplate::compile("{value >= 100 ? 'High' : 'Low'}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("value", Value::Int(100));
 
@@ -747,8 +718,7 @@ fn test_conditional_boundary_case_equal() {
 
 #[test]
 fn test_conditional_string_comparison_lexicographic() {
-    let template =
-        CBTemplate::compile::<DefaultParser>("{word > 'middle' ? 'After' : 'Before'}").unwrap();
+    let template = CBTemplate::compile("{word > 'middle' ? 'After' : 'Before'}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("word", Value::static_str("zebra"));
 
@@ -758,8 +728,7 @@ fn test_conditional_string_comparison_lexicographic() {
 
 #[test]
 fn test_conditional_mixed_with_repeat() {
-    let template =
-        CBTemplate::compile::<DefaultParser>("{show ? 'Yes' : 'No'} {pattern:count}").unwrap();
+    let template = CBTemplate::compile("{show ? 'Yes' : 'No'} {pattern:count}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("show", Value::Bool(true));
     ctx.insert("pattern", Value::static_str("*"));
@@ -771,8 +740,7 @@ fn test_conditional_mixed_with_repeat() {
 
 #[test]
 fn test_conditional_false_returns_variable() {
-    let template =
-        CBTemplate::compile::<DefaultParser>("{premium ? gold_msg : silver_msg}").unwrap();
+    let template = CBTemplate::compile("{premium ? gold_msg : silver_msg}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("premium", Value::Bool(false));
     ctx.insert("gold_msg", Value::static_str("Premium User"));
@@ -784,7 +752,7 @@ fn test_conditional_false_returns_variable() {
 
 #[test]
 fn test_conditional_integer_truthy_nonzero() {
-    let template = CBTemplate::compile::<DefaultParser>("{count ? 'Has items' : 'Empty'}").unwrap();
+    let template = CBTemplate::compile("{count ? 'Has items' : 'Empty'}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("count", Value::Int(5));
 
@@ -794,7 +762,7 @@ fn test_conditional_integer_truthy_nonzero() {
 
 #[test]
 fn test_conditional_integer_falsy_zero() {
-    let template = CBTemplate::compile::<DefaultParser>("{count ? 'Has items' : 'Empty'}").unwrap();
+    let template = CBTemplate::compile("{count ? 'Has items' : 'Empty'}").unwrap();
     let mut ctx = Context::new();
     ctx.insert("count", Value::Int(0));
 

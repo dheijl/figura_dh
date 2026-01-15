@@ -1,5 +1,5 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use figura::{Context, DefaultParser, Template, Value};
+use figura::{Context, Template, Value};
 use std::hint::black_box;
 
 type CBTemplate = Template<'{', '}'>;
@@ -9,7 +9,7 @@ fn simple_string_benchmarks(c: &mut Criterion) {
 
     // Benchmark: Simple variable replacement
     group.bench_function("single_variable", |b| {
-        let template = CBTemplate::compile::<DefaultParser>("Hello, {name}!").unwrap();
+        let template = CBTemplate::compile("Hello, {name}!").unwrap();
         let mut ctx = Context::new();
         ctx.insert("name", Value::static_str("World"));
 
@@ -18,7 +18,7 @@ fn simple_string_benchmarks(c: &mut Criterion) {
 
     // Benchmark: Multiple variables
     group.bench_function("multiple_variables", |b| {
-        let template = CBTemplate::compile::<DefaultParser>(
+        let template = CBTemplate::compile(
             "Hello, {name}! You are {age} years old and live in {city}.",
         )
         .unwrap();
@@ -33,7 +33,7 @@ fn simple_string_benchmarks(c: &mut Criterion) {
     // Benchmark: No variables (literal only)
     group.bench_function("literal_only", |b| {
         let template =
-            CBTemplate::compile::<DefaultParser>("This is a plain string with no variables.")
+            CBTemplate::compile("This is a plain string with no variables.")
                 .unwrap();
         let ctx = Context::new();
 
@@ -43,7 +43,7 @@ fn simple_string_benchmarks(c: &mut Criterion) {
     // Benchmark: Escaped delimiters
     group.bench_function("escaped_delimiters", |b| {
         let template =
-            CBTemplate::compile::<DefaultParser>("Use {{curly braces}} like this: {name}").unwrap();
+            CBTemplate::compile("Use {{curly braces}} like this: {name}").unwrap();
         let mut ctx = Context::new();
         ctx.insert("name", Value::static_str("example"));
 
@@ -58,7 +58,7 @@ fn complex_pattern_benchmarks(c: &mut Criterion) {
 
     // Benchmark: Simple repeat pattern
     group.bench_function("simple_repeat", |b| {
-        let template = CBTemplate::compile::<DefaultParser>("{pattern:count}").unwrap();
+        let template = CBTemplate::compile("{pattern:count}").unwrap();
         let mut ctx = Context::new();
         ctx.insert("pattern", Value::static_str("ABC"));
         ctx.insert("count", Value::Int(10));
@@ -68,7 +68,7 @@ fn complex_pattern_benchmarks(c: &mut Criterion) {
 
     // Benchmark: Large repeat pattern
     group.bench_function("large_repeat", |b| {
-        let template = CBTemplate::compile::<DefaultParser>("{pattern:count}").unwrap();
+        let template = CBTemplate::compile("{pattern:count}").unwrap();
         let mut ctx = Context::new();
         ctx.insert("pattern", Value::static_str("ABCDEFGHIJ"));
         ctx.insert("count", Value::Int(1000));
@@ -78,7 +78,7 @@ fn complex_pattern_benchmarks(c: &mut Criterion) {
 
     // Benchmark: Mixed literals and variables
     group.bench_function("mixed_complex", |b| {
-        let template = CBTemplate::compile::<DefaultParser>(
+        let template = CBTemplate::compile(
             "User: {name} | Status: {status} | Repeated: {char:times} | End",
         )
         .unwrap();
@@ -93,7 +93,7 @@ fn complex_pattern_benchmarks(c: &mut Criterion) {
 
     // Benchmark: Many variables
     group.bench_function("many_variables", |b| {
-        let template = CBTemplate::compile::<DefaultParser>(
+        let template = CBTemplate::compile(
             "{v1} {v2} {v3} {v4} {v5} {v6} {v7} {v8} {v9} {v10}",
         )
         .unwrap();
@@ -121,7 +121,7 @@ fn very_long_template_benchmarks(c: &mut Criterion) {
             .collect::<Vec<_>>()
             .join(" | ");
 
-        let template = CBTemplate::compile::<DefaultParser>(&template_str).unwrap();
+        let template = CBTemplate::compile(&template_str).unwrap();
         let mut ctx = Context::new();
         for i in 0..100 {
             ctx.insert(
@@ -136,7 +136,7 @@ fn very_long_template_benchmarks(c: &mut Criterion) {
     // Benchmark: Very long literal string
     group.bench_function("long_literal", |b| {
         let long_text = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(100);
-        let template = CBTemplate::compile::<DefaultParser>(&long_text).unwrap();
+        let template = CBTemplate::compile(&long_text).unwrap();
         let ctx = Context::new();
 
         b.iter(|| black_box(template.format(&ctx).unwrap()));
@@ -144,7 +144,7 @@ fn very_long_template_benchmarks(c: &mut Criterion) {
 
     // Benchmark: Complex nested patterns
     group.bench_function("complex_nested", |b| {
-        let template = CBTemplate::compile::<DefaultParser>(
+        let template = CBTemplate::compile(
             "Header: {title} | Body: {content:repeat} | Footer: {footer}",
         )
         .unwrap();
@@ -165,13 +165,13 @@ fn compilation_benchmarks(c: &mut Criterion) {
 
     // Benchmark: Simple template compilation
     group.bench_function("compile_simple", |b| {
-        b.iter(|| black_box(CBTemplate::compile::<DefaultParser>("Hello, {name}!").unwrap()));
+        b.iter(|| black_box(CBTemplate::compile("Hello, {name}!").unwrap()));
     });
 
     // Benchmark: Complex template compilation
     group.bench_function("compile_complex", |b| {
         let template_str = "{a} {b} {c:d} literal text {e} {{escaped}} {f:10}";
-        b.iter(|| black_box(CBTemplate::compile::<DefaultParser>(template_str).unwrap()));
+        b.iter(|| black_box(CBTemplate::compile(template_str).unwrap()));
     });
 
     // Benchmark: Long template compilation
@@ -181,7 +181,7 @@ fn compilation_benchmarks(c: &mut Criterion) {
             .collect::<Vec<_>>()
             .join(" text ");
 
-        b.iter(|| black_box(CBTemplate::compile::<DefaultParser>(&template_str).unwrap()));
+        b.iter(|| black_box(CBTemplate::compile(&template_str).unwrap()));
     });
 
     group.finish();
@@ -192,7 +192,7 @@ fn realistic_use_cases(c: &mut Criterion) {
 
     // Benchmark: Email template
     group.bench_function("email_template", |b| {
-        let template = CBTemplate::compile::<DefaultParser>(
+        let template = CBTemplate::compile(
             "Dear {name},\n\nThank you for your order #{order_id}.\n\n\
              Your {item_count} items will be shipped to {address}.\n\n\
              Total: ${total}\n\nBest regards,\nThe Team",
@@ -210,7 +210,7 @@ fn realistic_use_cases(c: &mut Criterion) {
 
     // Benchmark: HTML-like template
     group.bench_function("html_template", |b| {
-        let template = CBTemplate::compile::<DefaultParser>(
+        let template = CBTemplate::compile(
             "<div class=\"user\"><h1>{username}</h1><p>Email: {email}</p>\
              <p>Member since: {year}</p><p>{bio}</p></div>",
         )
@@ -229,7 +229,7 @@ fn realistic_use_cases(c: &mut Criterion) {
 
     // Benchmark: Log message template
     group.bench_function("log_template", |b| {
-        let template = CBTemplate::compile::<DefaultParser>(
+        let template = CBTemplate::compile(
             "[{level}] {timestamp} - {module}: {message} (user={user_id})",
         )
         .unwrap();
@@ -251,7 +251,7 @@ fn conditional_benchmarks(c: &mut Criterion) {
 
     // Benchmark: Simple boolean conditional
     group.bench_function("simple_boolean", |b| {
-        let template = CBTemplate::compile::<DefaultParser>("{flag ? 'yes' : 'no'}").unwrap();
+        let template = CBTemplate::compile("{flag ? 'yes' : 'no'}").unwrap();
         let mut ctx = Context::new();
         ctx.insert("flag", Value::Bool(true));
 
@@ -261,7 +261,7 @@ fn conditional_benchmarks(c: &mut Criterion) {
     // Benchmark: String equality comparison
     group.bench_function("string_equality", |b| {
         let template =
-            CBTemplate::compile::<DefaultParser>("{status == 'online' ? 'Active' : 'Inactive'}")
+            CBTemplate::compile("{status == 'online' ? 'Active' : 'Inactive'}")
                 .unwrap();
         let mut ctx = Context::new();
         ctx.insert("status", Value::static_str("online"));
@@ -271,7 +271,7 @@ fn conditional_benchmarks(c: &mut Criterion) {
 
     // Benchmark: String inequality comparison
     group.bench_function("string_inequality", |b| {
-        let template = CBTemplate::compile::<DefaultParser>(
+        let template = CBTemplate::compile(
             "{status != 'offline' ? 'Connected' : 'Disconnected'}",
         )
         .unwrap();
@@ -284,7 +284,7 @@ fn conditional_benchmarks(c: &mut Criterion) {
     // Benchmark: Numeric greater than
     group.bench_function("numeric_greater_than", |b| {
         let template =
-            CBTemplate::compile::<DefaultParser>("{age > 18 ? 'Adult' : 'Minor'}").unwrap();
+            CBTemplate::compile("{age > 18 ? 'Adult' : 'Minor'}").unwrap();
         let mut ctx = Context::new();
         ctx.insert("age", Value::Int(25));
 
@@ -294,7 +294,7 @@ fn conditional_benchmarks(c: &mut Criterion) {
     // Benchmark: Numeric less than
     group.bench_function("numeric_less_than", |b| {
         let template =
-            CBTemplate::compile::<DefaultParser>("{score < 50 ? 'Fail' : 'Pass'}").unwrap();
+            CBTemplate::compile("{score < 50 ? 'Fail' : 'Pass'}").unwrap();
         let mut ctx = Context::new();
         ctx.insert("score", Value::Int(75));
 
@@ -303,7 +303,7 @@ fn conditional_benchmarks(c: &mut Criterion) {
 
     // Benchmark: Greater than or equals
     group.bench_function("greater_than_equals", |b| {
-        let template = CBTemplate::compile::<DefaultParser>("{score >= 90 ? 'A' : 'B'}").unwrap();
+        let template = CBTemplate::compile("{score >= 90 ? 'A' : 'B'}").unwrap();
         let mut ctx = Context::new();
         ctx.insert("score", Value::Int(95));
 
@@ -313,7 +313,7 @@ fn conditional_benchmarks(c: &mut Criterion) {
     // Benchmark: Less than or equals
     group.bench_function("less_than_equals", |b| {
         let template =
-            CBTemplate::compile::<DefaultParser>("{temp <= 32 ? 'Freezing' : 'Above freezing'}")
+            CBTemplate::compile("{temp <= 32 ? 'Freezing' : 'Above freezing'}")
                 .unwrap();
         let mut ctx = Context::new();
         ctx.insert("temp", Value::Int(30));
@@ -324,7 +324,7 @@ fn conditional_benchmarks(c: &mut Criterion) {
     // Benchmark: Float comparison
     group.bench_function("float_comparison", |b| {
         let template =
-            CBTemplate::compile::<DefaultParser>("{price > 99.99 ? 'Expensive' : 'Affordable'}")
+            CBTemplate::compile("{price > 99.99 ? 'Expensive' : 'Affordable'}")
                 .unwrap();
         let mut ctx = Context::new();
         ctx.insert("price", Value::Float(120.50));
@@ -334,7 +334,7 @@ fn conditional_benchmarks(c: &mut Criterion) {
 
     // Benchmark: NOT operator
     group.bench_function("not_operator", |b| {
-        let template = CBTemplate::compile::<DefaultParser>("{!flag ? 'Off' : 'On'}").unwrap();
+        let template = CBTemplate::compile("{!flag ? 'Off' : 'On'}").unwrap();
         let mut ctx = Context::new();
         ctx.insert("flag", Value::Bool(false));
 
@@ -344,7 +344,7 @@ fn conditional_benchmarks(c: &mut Criterion) {
     // Benchmark: Comparing two variables
     group.bench_function("two_variables", |b| {
         let template =
-            CBTemplate::compile::<DefaultParser>("{a == b ? 'Same' : 'Different'}").unwrap();
+            CBTemplate::compile("{a == b ? 'Same' : 'Different'}").unwrap();
         let mut ctx = Context::new();
         ctx.insert("a", Value::Int(42));
         ctx.insert("b", Value::Int(42));
@@ -354,7 +354,7 @@ fn conditional_benchmarks(c: &mut Criterion) {
 
     // Benchmark: Variable and literal comparison
     group.bench_function("variable_literal", |b| {
-        let template = CBTemplate::compile::<DefaultParser>(
+        let template = CBTemplate::compile(
             "{role == 'admin' ? 'Full Access' : 'Limited Access'}",
         )
         .unwrap();
@@ -366,7 +366,7 @@ fn conditional_benchmarks(c: &mut Criterion) {
 
     // Benchmark: Multiple conditionals in one template
     group.bench_function("multiple_conditionals", |b| {
-        let template = CBTemplate::compile::<DefaultParser>(
+        let template = CBTemplate::compile(
             "{x > 0 ? 'positive' : 'non-positive'} and {y > 0 ? 'positive' : 'non-positive'}",
         )
         .unwrap();
@@ -380,7 +380,7 @@ fn conditional_benchmarks(c: &mut Criterion) {
     // Benchmark: Conditional with variable results
     group.bench_function("conditional_variable_results", |b| {
         let template =
-            CBTemplate::compile::<DefaultParser>("{premium ? gold_msg : silver_msg}").unwrap();
+            CBTemplate::compile("{premium ? gold_msg : silver_msg}").unwrap();
         let mut ctx = Context::new();
         ctx.insert("premium", Value::Bool(true));
         ctx.insert("gold_msg", Value::static_str("Premium User"));
@@ -391,7 +391,7 @@ fn conditional_benchmarks(c: &mut Criterion) {
 
     // Benchmark: Complex conditional in realistic template
     group.bench_function("realistic_user_status", |b| {
-        let template = CBTemplate::compile::<DefaultParser>(
+        let template = CBTemplate::compile(
             "User: {name} | Status: {online ? 'Online ✓' : 'Offline ✗'} | \
              Access: {role == 'admin' ? 'Full' : 'Limited'}",
         )
@@ -407,7 +407,7 @@ fn conditional_benchmarks(c: &mut Criterion) {
     // Benchmark: Conditional with unicode
     group.bench_function("unicode_conditional", |b| {
         let template =
-            CBTemplate::compile::<DefaultParser>("{success ? '✅ Success' : '❌ Failed'}").unwrap();
+            CBTemplate::compile("{success ? '✅ Success' : '❌ Failed'}").unwrap();
         let mut ctx = Context::new();
         ctx.insert("success", Value::Bool(true));
 
@@ -417,7 +417,7 @@ fn conditional_benchmarks(c: &mut Criterion) {
     // Benchmark: Truthy/falsy integer
     group.bench_function("truthy_integer", |b| {
         let template =
-            CBTemplate::compile::<DefaultParser>("{count ? 'Has items' : 'Empty'}").unwrap();
+            CBTemplate::compile("{count ? 'Has items' : 'Empty'}").unwrap();
         let mut ctx = Context::new();
         ctx.insert("count", Value::Int(5));
 
@@ -433,7 +433,7 @@ fn conditional_compilation_benchmarks(c: &mut Criterion) {
     // Benchmark: Compile simple conditional
     group.bench_function("compile_simple", |b| {
         b.iter(|| {
-            black_box(CBTemplate::compile::<DefaultParser>("{flag ? 'yes' : 'no'}").unwrap())
+            black_box(CBTemplate::compile("{flag ? 'yes' : 'no'}").unwrap())
         });
     });
 
@@ -441,7 +441,7 @@ fn conditional_compilation_benchmarks(c: &mut Criterion) {
     group.bench_function("compile_comparison", |b| {
         b.iter(|| {
             black_box(
-                CBTemplate::compile::<DefaultParser>("{age > 18 ? 'Adult' : 'Minor'}").unwrap(),
+                CBTemplate::compile("{age > 18 ? 'Adult' : 'Minor'}").unwrap(),
             )
         });
     });
@@ -450,7 +450,7 @@ fn conditional_compilation_benchmarks(c: &mut Criterion) {
     group.bench_function("compile_complex", |b| {
         b.iter(|| {
             black_box(
-                CBTemplate::compile::<DefaultParser>(
+                CBTemplate::compile(
                     "Status: {x > 0 ? 'positive' : 'negative'} and {y == z ? 'equal' : 'not equal'}",
                 )
                 .unwrap(),
@@ -461,7 +461,7 @@ fn conditional_compilation_benchmarks(c: &mut Criterion) {
     // Benchmark: Compile NOT conditional
     group.bench_function("compile_not", |b| {
         b.iter(|| {
-            black_box(CBTemplate::compile::<DefaultParser>("{!flag ? 'Off' : 'On'}").unwrap())
+            black_box(CBTemplate::compile("{!flag ? 'Off' : 'On'}").unwrap())
         });
     });
 

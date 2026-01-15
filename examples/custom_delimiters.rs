@@ -1,4 +1,4 @@
-use figura::{Context, DefaultParser, Template, Value};
+use figura::{Context, Template, Value};
 
 fn main() {
     let mut ctx = Context::new();
@@ -6,13 +6,13 @@ fn main() {
     ctx.insert("count", Value::Int(5));
 
     let template =
-        Template::<'<', '>'>::compile::<DefaultParser>("Title: <title> | Stars: <'★':count>")
+        Template::<'<', '>'>::compile("Title: <title> | Stars: <'★':count>")
             .unwrap();
 
     let output = template.format(&ctx).unwrap();
     println!("{}", output);
 
-    let template = Template::<'[', ']'>::compile::<DefaultParser>(
+    let template = Template::<'[', ']'>::compile(
         "Using brackets: [title] with [count] items",
     )
     .unwrap();
@@ -21,7 +21,7 @@ fn main() {
     println!("{}", output);
 
     let template =
-        Template::<'%', '%'>::compile::<DefaultParser>("Percent signs: %title% %%escaped%%")
+        Template::<'%', '%'>::compile("Percent signs: %title% %%escaped%%")
             .unwrap();
 
     let output = template.format(&ctx).unwrap();
