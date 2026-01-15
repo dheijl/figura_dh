@@ -1,4 +1,4 @@
-use figura::{Context, DefaultParser, Template, Value};
+use figura::{Context, Template, Value};
 
 fn main() {
     let mut ctx = Context::new();
@@ -6,7 +6,7 @@ fn main() {
     ctx.insert("age", Value::Int(30));
     ctx.insert("city", Value::static_str("Boston"));
 
-    let template = Template::<'{', '}'>::compile::<DefaultParser>(
+    let template = Template::<'{', '}'>::compile(
         "Hello {name}! You are {age} years old and live in {city}.",
     )
     .unwrap();

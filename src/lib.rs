@@ -3,6 +3,8 @@
 //! Figura is a template engine for Rust that supports variable substitution,
 //! repeating patterns, and conditional logic with customizable delimiters.
 //!
+//! If you don't like that, you can extend the default parser by implementing the `Parser` trait.
+//!
 //! ## Features
 //!
 //! - **Variable substitution**: `{name}` - Replace with context values
@@ -25,7 +27,7 @@
 //! ctx.insert("count", Value::Int(3));
 //!
 //! // Compile a template (using default '{' and '}' delimiters)
-//! let template = Template::<'{', '}'>::compile::<figura::DefaultParser>(
+//! let template = Template::<'{', '}'>::compile(
 //!     "Hello {name}! {'*':count}"
 //! ).unwrap();
 //!
@@ -140,10 +142,11 @@ pub type Context = HashMap<&'static str, Value>;
 /// # Examples
 ///
 /// ```rust
-/// use figura::{Template, DefaultParser, Context, Value};
-/// use std::collections::HashMap; ///
+/// use figura::{Template, Context, Value};
+/// use std::collections::HashMap;
+///
 /// // Using default delimiters
-/// let tmpl = Template::<'{', '}'>::compile::<DefaultParser>("Hello {name}!").unwrap();
+/// let tmpl = Template::<'{', '}'>::compile("Hello {name}!").unwrap();
 ///
 /// let mut ctx = HashMap::new();
 /// ctx.insert("name", Value::static_str("World"));
@@ -161,18 +164,10 @@ impl<const C: char, const O: char> fmt::Debug for Template<O, C> {
 }
 
 impl<const O: char, const C: char> Template<O, C> {
-    /// Compiles a template string into an executable template.
+    /// Compiles a template string using the default parser.
     ///
-    /// The template is parsed according to the rules defined by the parser `P`.
-    /// The default parser supports:
-    /// - Variable substitution: `{name}`
-    /// - Repeating: `{pattern:count}`
-    /// - Conditionals: `{condition ? true_val : false_val}`
-    /// - Comparisons: `{a == b ? yes : no}`
-    ///
-    /// # Type Parameters
-    ///
-    /// * `P` - The parser implementation to use (typically `DefaultParser`)
+    /// This is the most common way to create a template. It uses the `DefaultParser`
+    /// which supports variable substitution, repeating patterns, and conditional logic.
     ///
     /// # Arguments
     ///
@@ -180,25 +175,99 @@ impl<const O: char, const C: char> Template<O, C> {
     ///
     /// # Returns
     ///
-    /// * `Ok(Template)` - Successfully compiled template
-    /// * `Err(String)` - Error message if compilation failed
+    /// * `Ok(Template)` - A compiled template ready for rendering
+    /// * `Err(TemplateError)` - If the template syntax is invalid
     ///
     /// # Errors
     ///
-    /// Returns an error if:
-    /// - Delimiters are unclosed
-    /// - Expression syntax is invalid
+    /// Returns a `TemplateError` if:
+    /// - A delimiter is not properly closed
+    /// - A directive cannot be parsed
     ///
     /// # Examples
     ///
     /// ```rust
-    /// use figura::{Template, DefaultParser};
+    /// use figura::{Template, Context, Value};
+    /// use std::collections::HashMap;
     ///
-    /// let tmpl = Template::<'{', '}'>::compile::<DefaultParser>(
-    ///     "Value: {x}"
-    /// ).unwrap();
+    /// // Variable substitution
+    /// let tmpl = Template::<'{', '}'>::compile("Hello {name}!").unwrap();
+    ///
+    /// let mut ctx = HashMap::new();
+    /// ctx.insert("name", Value::static_str("World"));
+    /// assert_eq!(tmpl.format(&ctx).unwrap(), "Hello World!");
+    ///
+    /// // Repeating patterns
+    /// let tmpl = Template::<'{', '}'>::compile("{'*':count}").unwrap();
+    /// let mut ctx = HashMap::new();
+    /// ctx.insert("count", Value::Int(3));
+    /// assert_eq!(tmpl.format(&ctx).unwrap(), "***");
+    ///
+    /// // Conditionals
+    /// let tmpl = Template::<'{', '}'>::compile("{x > 5 ? 'big' : 'small'}").unwrap();
+    /// let mut ctx = HashMap::new();
+    /// ctx.insert("x", Value::Int(10));
+    /// assert_eq!(tmpl.format(&ctx).unwrap(), "big");
     /// ```
-    pub fn compile<P: Parser>(input: &str) -> Result<Self, String> {
+    pub fn compile(input: impl AsRef<str>) -> Result<Self, TemplateError> {
+        Self::compile_with_parser::<DefaultParser>(input.as_ref())
+    }
+
+    /// Compiles a template string using a custom parser.
+    ///
+    /// This method allows you to use a custom parser implementation for specialized
+    /// template syntax or custom directives. The parser must implement the `Parser` trait.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `P` - A type implementing the `Parser` trait
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - The template string to compile
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Template)` - A compiled template ready for rendering
+    /// * `Err(TemplateError)` - If the template syntax is invalid
+    ///
+    /// # Errors
+    ///
+    /// Returns a `TemplateError` if:
+    /// - A delimiter is not properly closed
+    /// - The custom parser cannot parse a directive
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use figura::{Template, DefaultParser, Context, Value};
+    /// use std::collections::HashMap;
+    ///
+    /// // Using the default parser explicitly
+    /// let tmpl = Template::<'{', '}'>::compile_with_parser::<DefaultParser>(
+    ///     "Hello {name}!"
+    /// ).unwrap();
+    ///
+    /// let mut ctx = HashMap::new();
+    /// ctx.insert("name", Value::static_str("Alice"));
+    /// assert_eq!(tmpl.format(&ctx).unwrap(), "Hello Alice!");
+    /// ```
+    ///
+    /// For custom parser implementations, implement the `Parser` trait:
+    ///
+    /// ```rust
+    /// use figura::{Parser, Token, Directive};
+    ///
+    /// struct MyCustomParser;
+    ///
+    /// impl Parser for MyCustomParser {
+    ///     fn parse(tokens: &[Token]) -> Option<Box<dyn Directive>> {
+    ///         // Your custom parsing logic here
+    ///         None
+    ///     }
+    /// }
+    /// ```
+    pub fn compile_with_parser<P: Parser>(input: &str) -> Result<Self, TemplateError> {
         let mut directives: Vec<Box<dyn Directive>> = Vec::new();
         let mut cursor = 0;
         let mut chars = input.char_indices().peekable();
@@ -254,7 +323,7 @@ impl<const O: char, const C: char> Template<O, C> {
                 }
 
                 if !found_close {
-                    return Err(format!("Unclosed delimiter '{}'", O));
+                    return Err(TemplateError::MissingDelimiter(C));
                 }
 
                 let content = &input[start..end];
@@ -265,7 +334,7 @@ impl<const O: char, const C: char> Template<O, C> {
 
                 match P::parse(&tokens) {
                     Some(directive) => directives.push(directive),
-                    None => return Err(format!("Failed to parse expression: '{}'", content)),
+                    None => return Err(TemplateError::DirectiveParsing(content.to_string())),
                 }
             } else if ch == C
                 && let Some(&(_, next_char)) = chars.peek()
@@ -318,10 +387,10 @@ impl<const O: char, const C: char> Template<O, C> {
     /// # Examples
     ///
     /// ```rust
-    /// use figura::{Template, DefaultParser, Context, Value};
+    /// use figura::{Template, Context, Value};
     /// use std::collections::HashMap;
     ///
-    /// let tmpl = Template::<'{', '}'>::compile::<DefaultParser>("Hi {name}!").unwrap();
+    /// let tmpl = Template::<'{', '}'>::compile("Hi {name}!").unwrap();
     ///
     /// let mut ctx = HashMap::new();
     /// ctx.insert("name", Value::static_str("Alice"));

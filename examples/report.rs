@@ -1,4 +1,4 @@
-use figura::{Context, DefaultParser, Template, Value};
+use figura::{Context, Template, Value};
 
 fn main() {
     let mut ctx = Context::new();
@@ -13,7 +13,7 @@ fn main() {
     ctx.insert("employees", Value::Int(42));
     ctx.insert("bar_width", Value::Int(40));
 
-    let template = Template::<'{', '}'>::compile::<DefaultParser>(
+    let template = Template::<'{', '}'>::compile(
         "\
 {'=':70}
 {' ':20}{company} - Quarterly Report

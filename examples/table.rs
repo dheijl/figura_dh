@@ -1,4 +1,4 @@
-use figura::{Context, DefaultParser, Template, Value};
+use figura::{Context, Template, Value};
 
 fn main() {
     let mut ctx = Context::new();
@@ -20,7 +20,7 @@ fn main() {
     ctx.insert("score3", Value::Int(92));
     ctx.insert("active3", Value::Bool(true));
 
-    let template = Template::<'{', '}'>::compile::<DefaultParser>(
+    let template = Template::<'{', '}'>::compile(
         "\
 {title}
 {'-':60}

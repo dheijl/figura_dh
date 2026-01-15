@@ -1,10 +1,10 @@
-use figura::{Context, DefaultParser, Template, Value};
+use figura::{Context, Template, Value};
 
 type CBTemplate = Template<'{', '}'>;
 
 fn main() {
     let mut ctx = Context::new();
-    let template = CBTemplate::compile::<DefaultParser>("Hello, my name is {name}!").unwrap();
+    let template = CBTemplate::compile("Hello, my name is {name}!").unwrap();
 
     ctx.insert("name", Value::static_str("John"));
     ctx.insert("count", Value::Int(4));
@@ -13,7 +13,7 @@ fn main() {
 
     println!("{}", output);
 
-    let template = CBTemplate::compile::<DefaultParser>(
+    let template = CBTemplate::compile(
         "This will be repeated {count} times {'Abbacchio':count}",
     )
     .unwrap();
@@ -22,7 +22,7 @@ fn main() {
 
     println!("{}", output);
 
-    let template = CBTemplate::compile::<DefaultParser>(
+    let template = CBTemplate::compile(
         "Status: {status == 'offline' ? 'Offline :(' : 'Online :)'}",
     )
     .unwrap();

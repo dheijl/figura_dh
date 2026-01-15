@@ -222,28 +222,28 @@ fn main() {
     ctx.insert("a", Value::Int(100));
     ctx.insert("b", Value::Int(25));
 
-    let template = Template::<'{', '}'>::compile::<MathParser>("x = {x}, y = {y}").unwrap();
+    let template = Template::<'{', '}'>::compile_with_parser::<MathParser>("x = {x}, y = {y}").unwrap();
     println!("{}", template.format(&ctx).unwrap());
 
-    let template = Template::<'{', '}'>::compile::<MathParser>("x + y = {x + y}").unwrap();
+    let template = Template::<'{', '}'>::compile_with_parser::<MathParser>("x + y = {x + y}").unwrap();
     println!("{}", template.format(&ctx).unwrap());
 
-    let template = Template::<'{', '}'>::compile::<MathParser>("x - y = {x - y}").unwrap();
+    let template = Template::<'{', '}'>::compile_with_parser::<MathParser>("x - y = {x - y}").unwrap();
     println!("{}", template.format(&ctx).unwrap());
 
-    let template = Template::<'{', '}'>::compile::<MathParser>("x * y = {x * y}").unwrap();
+    let template = Template::<'{', '}'>::compile_with_parser::<MathParser>("x * y = {x * y}").unwrap();
     println!("{}", template.format(&ctx).unwrap());
 
-    let template = Template::<'{', '}'>::compile::<MathParser>("a / b = {a / b}").unwrap();
+    let template = Template::<'{', '}'>::compile_with_parser::<MathParser>("a / b = {a / b}").unwrap();
     println!("{}", template.format(&ctx).unwrap());
 
-    let template = Template::<'{', '}'>::compile::<MathParser>("x * 3 = {x * 3}").unwrap();
+    let template = Template::<'{', '}'>::compile_with_parser::<MathParser>("x * 3 = {x * 3}").unwrap();
     println!("{}", template.format(&ctx).unwrap());
 
-    let template = Template::<'{', '}'>::compile::<MathParser>("y + 10 = {y + 10}").unwrap();
+    let template = Template::<'{', '}'>::compile_with_parser::<MathParser>("y + 10 = {y + 10}").unwrap();
     println!("{}", template.format(&ctx).unwrap());
 
     let template =
-        Template::<'{', '}'>::compile::<MathParser>("Result: {x + y} + {a - b} = {x * 2}").unwrap();
+        Template::<'{', '}'>::compile_with_parser::<MathParser>("Result: {x + y} + {a - b} = {x * 2}").unwrap();
     println!("{}", template.format(&ctx).unwrap());
 }
