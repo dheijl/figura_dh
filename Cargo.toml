@@ -20,7 +20,7 @@ doctest = false
 [dependencies]
 itoa = "1.0.17"
 thiserror = "2.0.18"
-zmij = "1.0.17"
+zmij = "1.0.18"
 
 
 [dev-dependencies]
