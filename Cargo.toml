@@ -20,11 +20,11 @@ doctest = false
 [dependencies]
 itoa = "1.0.17"
 thiserror = "2.0.18"
-zmij = "1.0.19"
+zmij = "1.0.20"
 
 
 [dev-dependencies]
-criterion = "0.8.1"
+criterion = "0.8.2"
 
 [[bench]]
 name = "template_bench"
