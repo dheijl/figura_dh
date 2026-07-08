@@ -4,6 +4,8 @@
 //! expressions into executable directives. The parser uses pattern matching
 //! on token sequences to recognize different template syntaxes.
 
+use std::borrow::Cow;
+
 use crate::{
     arg::{Argument, ComparisonOp},
     directive::{
@@ -11,7 +13,6 @@ use crate::{
     },
     lexer::Token,
 };
-use std::borrow::Cow;
 
 /// A parser that converts token sequences into executable directives.
 ///
@@ -51,7 +52,7 @@ pub trait Parser {
     /// let directive = DefaultParser::parse(&tokens);
     /// assert!(directive.is_some());
     /// ```
-    fn parse(tokens: &[Token]) -> Option<Box<dyn Directive>>;
+    fn parse(tokens: &[Token]) -> Option<Box<dyn Directive + Send + Sync>>;
 }
 
 /// The default parser implementation.
@@ -127,7 +128,7 @@ impl Parser for DefaultParser {
     /// Returns `Some(directive)` if parsing succeeds, or `Some(EmptyDirective)` if
     /// the token sequence doesn't match any known pattern. Returns `None` only if
     /// a critical parsing error occurs (currently never happens in practice).
-    fn parse(tokens: &[Token]) -> Option<Box<dyn Directive>> {
+    fn parse(tokens: &[Token]) -> Option<Box<dyn Directive + Send + Sync>> {
         match tokens {
             // Simple variable replacement: {name}
             // Example: {username} → ReplaceDirective(Variable("username"))

@@ -46,10 +46,12 @@ mod lexer;
 mod parser;
 mod traits;
 
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::fmt::{self};
+use std::{
+    borrow::Cow,
+    cell::RefCell,
+    collections::HashMap,
+    fmt::{self},
+};
 
 pub use arg::*;
 pub use directive::*;
@@ -154,7 +156,7 @@ pub type Context = HashMap<&'static str, Value>;
 /// assert_eq!(tmpl.format(&ctx).unwrap(), "Hello World!");
 /// ```
 pub struct Template<const O: char, const C: char> {
-    directives: Vec<Box<dyn Directive>>,
+    directives: Vec<Box<dyn Directive + Send + Sync>>,
 }
 
 impl<const C: char, const O: char> fmt::Debug for Template<O, C> {
@@ -268,7 +270,7 @@ impl<const O: char, const C: char> Template<O, C> {
     /// }
     /// ```
     pub fn compile_with_parser<P: Parser>(input: &str) -> Result<Self, TemplateError> {
-        let mut directives: Vec<Box<dyn Directive>> = Vec::new();
+        let mut directives: Vec<Box<dyn Directive + Send + Sync>> = Vec::new();
         let mut cursor = 0;
         let mut chars = input.char_indices().peekable();
 

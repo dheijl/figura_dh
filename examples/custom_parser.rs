@@ -1,12 +1,13 @@
+use std::borrow::Cow;
+
 use figura::{
     Argument, Context, Directive, EmptyDirective, Parser, ReplaceDirective, Template, Token, Value,
 };
-use std::borrow::Cow;
 
 struct MathParser;
 
 impl Parser for MathParser {
-    fn parse(tokens: &[Token]) -> Option<Box<dyn Directive>> {
+    fn parse(tokens: &[Token]) -> Option<Box<dyn Directive + Send + Sync>> {
         match tokens {
             [Token::Ident(var)] => Some(Box::new(ReplaceDirective(Argument::variable(
                 Cow::Owned(var.to_string()),
@@ -222,28 +223,37 @@ fn main() {
     ctx.insert("a", Value::Int(100));
     ctx.insert("b", Value::Int(25));
 
-    let template = Template::<'{', '}'>::compile_with_parser::<MathParser>("x = {x}, y = {y}").unwrap();
-    println!("{}", template.format(&ctx).unwrap());
-
-    let template = Template::<'{', '}'>::compile_with_parser::<MathParser>("x + y = {x + y}").unwrap();
-    println!("{}", template.format(&ctx).unwrap());
-
-    let template = Template::<'{', '}'>::compile_with_parser::<MathParser>("x - y = {x - y}").unwrap();
-    println!("{}", template.format(&ctx).unwrap());
-
-    let template = Template::<'{', '}'>::compile_with_parser::<MathParser>("x * y = {x * y}").unwrap();
-    println!("{}", template.format(&ctx).unwrap());
-
-    let template = Template::<'{', '}'>::compile_with_parser::<MathParser>("a / b = {a / b}").unwrap();
-    println!("{}", template.format(&ctx).unwrap());
-
-    let template = Template::<'{', '}'>::compile_with_parser::<MathParser>("x * 3 = {x * 3}").unwrap();
-    println!("{}", template.format(&ctx).unwrap());
-
-    let template = Template::<'{', '}'>::compile_with_parser::<MathParser>("y + 10 = {y + 10}").unwrap();
+    let template =
+        Template::<'{', '}'>::compile_with_parser::<MathParser>("x = {x}, y = {y}").unwrap();
     println!("{}", template.format(&ctx).unwrap());
 
     let template =
-        Template::<'{', '}'>::compile_with_parser::<MathParser>("Result: {x + y} + {a - b} = {x * 2}").unwrap();
+        Template::<'{', '}'>::compile_with_parser::<MathParser>("x + y = {x + y}").unwrap();
+    println!("{}", template.format(&ctx).unwrap());
+
+    let template =
+        Template::<'{', '}'>::compile_with_parser::<MathParser>("x - y = {x - y}").unwrap();
+    println!("{}", template.format(&ctx).unwrap());
+
+    let template =
+        Template::<'{', '}'>::compile_with_parser::<MathParser>("x * y = {x * y}").unwrap();
+    println!("{}", template.format(&ctx).unwrap());
+
+    let template =
+        Template::<'{', '}'>::compile_with_parser::<MathParser>("a / b = {a / b}").unwrap();
+    println!("{}", template.format(&ctx).unwrap());
+
+    let template =
+        Template::<'{', '}'>::compile_with_parser::<MathParser>("x * 3 = {x * 3}").unwrap();
+    println!("{}", template.format(&ctx).unwrap());
+
+    let template =
+        Template::<'{', '}'>::compile_with_parser::<MathParser>("y + 10 = {y + 10}").unwrap();
+    println!("{}", template.format(&ctx).unwrap());
+
+    let template = Template::<'{', '}'>::compile_with_parser::<MathParser>(
+        "Result: {x + y} + {a - b} = {x * 2}",
+    )
+    .unwrap();
     println!("{}", template.format(&ctx).unwrap());
 }

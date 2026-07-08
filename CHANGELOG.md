@@ -16,5 +16,9 @@ v2.0.0 - January 15 2026
 - Removed `SwitchDirective`
 - Template creation function changed from "parse" to "compile"
 
-V2.0.3 - January 15
+V2.0.3 - January 15 2026
 - Replace `ryu` with `zmij`
+
+V3.0.0 - July 08 2026
+- Now the directives inside the templates must be Send + Sync, which could break previous implementations.
+- Updated depedencies to latest versions.
