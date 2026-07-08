@@ -1,6 +1,6 @@
 [package]
 name = "figura"
-version = "2.0.3"
+version = "3.0.0"
 edition = "2024"
 authors = ["Saverio Scagnoli <svscagn@gmail.com>"]
 description = "A flexible string template formatting crate"
@@ -11,7 +11,7 @@ license = "MIT"
 readme = "README.md"
 keywords = ["string", "format", "template"]
 
-exclude = [".gitignore", "docs", "CHANGELOG.md"]
+exclude = [".gitignore", "docs", "benchmarks", "examples", "tests", "CHANGELOG.md"]
 
 
 [lib]
